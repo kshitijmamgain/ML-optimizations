@@ -40,7 +40,7 @@ columns=dict({
 })
 
 # Read data into a pandas dataframe & assign column labels
-raw_data = pd.read_csv(path, compression = 'gzip', names = columns)
+raw_data = pd.read_csv('gs://higgs_data/HIGGS.csv.gz', compression = 'gzip', names = columns)
 
 # Replace missing values 
 imp = SimpleImputer(missing_values = -999.0, strategy = 'mean')
