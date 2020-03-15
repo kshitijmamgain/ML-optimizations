@@ -40,34 +40,35 @@ columns=dict({
 })
 
 # Read data into a pandas dataframe & assign column labels
-raw_data=pd.read_csv(path, compression = 'gzip', names = columns)
+raw_data = pd.read_csv(path, compression = 'gzip', names = columns)
+
+# Replace missing values 
+imp = SimpleImputer(missing_values = -999.0, strategy = 'mean')
+raw_features = pd.DataFrame(imp.fit_transform(raw_features), columns = columns[1:])
 
 # Identify outliers
 def outlier_index(df, feature):
-        values=sorted(df[feature])
-        q1, q3= np.percentile(values,[25,75])
-        iqr=q3-q1
+        values = sorted(df[feature])
+        q1, q3 = np.percentile(values,[25,75])
+        iqr = q3-q1
         lower_bound = q1 -(1.5 * iqr) 
         upper_bound = q3 +(1.5 * iqr)
 
-        i=0
-        outliers=[]
+        i = 0
+        outliers = []
         for y in df[feature]:
             if y<lower_bound and y>upper_bound:
                 outliers.append(i)
-            i=i+1
+            i+=1
         return outliers
     
 for col in raw_features:
     print(outlier_index(raw_features, col))
 
 # Drop outliers
-   
-# Replace missing values 
-imp=SimpleImputer(missing_values=-999.0, strategy='mean')
-raw_features=pd.DataFrame(imp.fit_transform(raw_features), columns=[1:], columns=columns[1:])
 
-stc=StandardScaler()
-raw_features=pd.DataFrame(stc.fit_transform(raw_features), columns=columns[1:])
+# Normalize columns
+stc = StandardScaler()
+raw_features = pd.DataFrame(stc.fit_transform(raw_features), columns = columns[1:])
 
 
