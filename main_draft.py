@@ -5,7 +5,7 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 from sklearn.impute import SimpleImputer
 from sklearn.preprocessing import StandardScaler
-from sklearn.pipeline import Pipeline
+m sklearn.pipeline import Pipeline
 
 columns=dict({
     'class_label': tf.float32,
