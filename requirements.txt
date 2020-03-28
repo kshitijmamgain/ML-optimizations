@@ -1,0 +1,9 @@
+'seaborn' version is == 0.9.0
+'numpy' version is : 1.16.5
+'matplotlib' version is : 3.1.2
+'catboost' version is : 0.22
+'hyperopt' version is : 0.2.3
+'sklearn' version is : 0.21.3
+'xgboost' version is : 1.0.1
+'pandas' version is : 1.0.1
+'lightgbm' version is : 2.3.1
