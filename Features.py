@@ -41,7 +41,7 @@ class FeatureEng():
         return self.label_df, self.features_df
 
     # Implement Feature tools to create new features
-    def new_features(self, list_agg_primitives, list_trans_primitives):
+    def new_features(self, list_agg_primitives, list_trans_primitives, max_depth_value):
         if self.features_df.shape[1] == self.features_df.select_dtypes(include=np.number).shape[1]:
             # Make an entityset and add the entity
             es = ft.EntitySet(id = 'id_1')
@@ -51,13 +51,27 @@ class FeatureEng():
             self.feature_matrix, self.feature_defs = ft.dfs(entityset=es, target_entity='id_2',
 
                                             agg_primitives=list_agg_primitives,
-                                            trans_primitives=list_trans_primitives)
+                                            trans_primitives=list_trans_primitives,
+                                            max_depth=max_depth_value)
 
             return self.feature_matrix, self.feature_defs
 
         else:
             raise ValueError( "Data Frame contains non-numeric values")
 
+    #remove highly correlated features
+    def remove_correlated_features(self, threshold):
+        self.col_corr = set() # Set of all the names of deleted columns
+        self.corr_matrix = self.feature_matrix.corr()
+        for i in range(len(self.corr_matrix.columns)):
+            for j in range(i):
+                if (abs(self.corr_matrix.iloc[i, j]) >= threshold) and (self.corr_matrix.columns[j] not in self.col_corr):
+                    self.colname = self.corr_matrix.columns[i] # getting the name of column
+                    self.col_corr.add(self.colname)
+                    if self.colname in self.feature_matrix.columns:
+                        del self.feature_matrix[self.colname] # deleting the column from the dataset
+
+        return self.feature_matrix
 
     #adding the target(output) column to the dataframe with new features
     def df_with_new_features(self, target_col_name):
@@ -72,136 +86,175 @@ class FeatureEng():
 class FeatureSelect(FeatureEng):
     """combines several methods to choose the best features
     """
-#preparing data for model
-def __init__(self, split_ratio):
-    self.X = FeatureEng.feauture_matrix.iloc[:,:-1]  #independent columns
-    self.y = FeatureEng.feauture_matrix.iloc[:,-1]   #target column
-    self.X_train, self.X_test, self.y_train, self.y_test = train_test_split(X, y, test_size = split_ratio, random_state = 1)
-    self.X_norm = MinMaxScaler().fit_transform(self.X_train)
-    self.feature_name = self.X_train.columns.tolist()
+    #preparing data for model
+    def __init__(self, feature_matrix, num_features):
+        FeatureEng.feature_matrix = feature_matrix
+        self.X = self.feature_matrix.iloc[:,:-1]  #independent columns
+        self.y = self.feature_matrix.iloc[:,-1]   #target column
+        self.X_norm = MinMaxScaler().fit_transform(self.X)
+        self.feature_name = self.X.columns.tolist()
+        self.num_feats = num_features
+        
 
-#feature selection using Pearson’s correlation
-#We check the absolute value of the Pearson’s correlation between the target 
-#and numerical features in our dataset. We keep the top n features based on this criterion.
-def cor_pearson_selector(self,num_feats):
+    #feature selection using Pearson’s correlation
+    #We check the absolute value of the Pearson’s correlation between the target 
+    #and numerical features in our dataset. We keep the top n features based on this criterion.
+    def cor_pearson_selector(self):
 
-    self.cor_list = []
+        self.cor_list = []
     
 
     # calculate the correlation with y for each feature
 
-    for i in self.X_train.columns.tolist():
+        for i in self.X.columns.tolist():
 
-        cor = np.corrcoef(self.X_train[i], self.y_train)[0, 1]
+            cor = np.corrcoef(self.X[i], self.y)[0, 1]
 
-        self.cor_list.append(cor)
+            self.cor_list.append(cor)
 
     # replace NaN with 0
 
-    self.cor_list = [0 if np.isnan(i) else i for i in self.cor_list]
+        self.cor_list = [0 if np.isnan(i) else i for i in self.cor_list]
 
     # feature name
 
-    self.cor_feature = self.X_train.iloc[:,np.argsort(np.abs(self.cor_list))[-num_feats:]].columns.tolist()
+        self.cor_feature = self.X.iloc[:,np.argsort(np.abs(self.cor_list))[-self.num_feats:]].columns.tolist()
 
     # feature selection? 0 for not select, 1 for select
 
-    self.cor_support = [True if i in self.cor_feature else False for i in self.feature_name]
+        self.cor_support = [True if i in self.cor_feature else False for i in self.feature_name]
 
-    return self.cor_support, self.cor_feature
-
-
-#feature selection using Chi-Squared method
-def chi_square_selector(self,num_feats):
-
-    self.chi_selector = SelectKBest(chi2, k=num_feats)
-
-    self.chi_selector.fit(self.X_norm, self.y_train)
-
-    self.chi_support = self.chi_selector.get_support()
-
-    self.chi_feature = self.X_train.loc[:,self.chi_support].columns.tolist()
-
-    return self.chi_feature
+        return self.cor_support, self.cor_feature
 
 
+    #feature selection using Chi-Squared method
+    def chi_square_selector(self):
 
-#feature selection using Recursive Feature Elimination
-def recursive_selector(self,num_feats):
+        self.chi_selector = SelectKBest(chi2, k=self.num_feats)
 
-    self.rfe_selector = RFE(estimator=LogisticRegression(), n_features_to_select=num_feats, step=10, verbose=5)
+        self.chi_selector.fit(self.X_norm, self.y)
 
-    self.rfe_selector.fit(self.X_norm, self.y_train)
+        self.chi_support = self.chi_selector.get_support()
 
-    self.rfe_support = self.rfe_selector.get_support()
+        self.chi_feature = self.X.loc[:,self.chi_support].columns.tolist()
 
-    self.rfe_feature = self.X_train.loc[:,self.rfe_support].columns.tolist()
-
-    return self.rfe_feature
-
-
-#feature selction using logistic regression
-def log_reg_selector(self,num_feats):
-
-    self.embeded_lr_selector = SelectFromModel(LogisticRegression(penalty="l2"), max_features=num_feats)
-
-    self.embeded_lr_selector.fit(self.X_norm, self.y_train)
-
-    self.embeded_lr_support = self.embeded_lr_selector.get_support()
-
-    self.embeded_lr_feature = self.X_train.loc[:,self.embeded_lr_support].columns.tolist()
-
-    return self.embeded_lr_feature
+        return self.chi_feature
 
 
 
-# feature selection using Random Forest
-def random_forest_selector(self,num_feats):
+    #feature selection using Recursive Feature Elimination
+    def recursive_selector(self):
 
-    self.embeded_rf_selector = SelectFromModel(RandomForestClassifier(n_estimators=100), max_features=num_feats)
+        self.rfe_selector = RFE(estimator=LogisticRegression(), n_features_to_select=self.num_feats, step=10, verbose=5)
 
-    self.embeded_rf_selector.fit(self.X_train, self.y_train)
+        self.rfe_selector.fit(self.X_norm, self.y)
 
-    self.embeded_rf_support = self.embeded_rf_selector.get_support()
+        self.rfe_support = self.rfe_selector.get_support()
 
-    self.embeded_rf_feature = self.X_train.loc[:,self.embeded_rf_support].columns.tolist()
+        self.rfe_feature = self.X.loc[:,self.rfe_support].columns.tolist()
 
-    return self.embeded_rf_feature
-
-
-#feature selection using Light GBM
-def LGBM_selector(self,num_feats):
-    self.lgbc=LGBMClassifier(n_estimators=500, learning_rate=0.05, num_leaves=32, colsample_bytree=0.2,
-
-            reg_alpha=3, reg_lambda=1, min_split_gain=0.01, min_child_weight=40)
+        return self.rfe_feature
 
 
-    self.embeded_lgb_selector = SelectFromModel(lgbc, max_features=num_feats)
+    #feature selction using logistic regression
+    def log_reg_selector(self):
 
-    self.embeded_lgb_selector.fit(self.X_train, self.y_train)
+        self.embeded_lr_selector = SelectFromModel(LogisticRegression(penalty="l2"), 
+                                                   max_features=self.num_feats)
 
-    self.embeded_lgb_support = self.embeded_lgb_selector.get_support()
+        self.embeded_lr_selector.fit(self.X_norm, self.y)
 
-    self.embeded_lgb_feature = self.X_train.loc[:,self.embeded_lgb_support].columns.tolist()
+        self.embeded_lr_support = self.embeded_lr_selector.get_support()
 
-    return self.embeded_lgb_feature
+        self.embeded_lr_feature = self.X.loc[:,self.embeded_lr_support].columns.tolist()
+
+        return self.embeded_lr_feature
 
 
 
-# put all selection together
-def combine_selector(self,num_feats):
-    self.feature_selection_df = pd.DataFrame({'Feature':self.feature_name, 'Pearson':self.cor_support, 'Chi-2':self.chi_support, 'RFE':self.rfe_support, 'Logistics':self.embeded_lr_support,
+    # feature selection using Random Forest
+    def random_forest_selector(self):
 
-                                    'Random Forest':self.embeded_rf_support, 'LightGBM':self.embeded_lgb_support})
+        self.embeded_rf_selector = SelectFromModel(RandomForestClassifier(n_estimators=100, random_state=1), 
+                                                   max_features=self.num_feats)
 
-    # count the selected times for each feature
+        self.embeded_rf_selector.fit(self.X, self.y)
 
-    self.feature_selection_df['Total'] = np.sum(self.feature_selection_df, axis=1)
+        self.embeded_rf_support = self.embeded_rf_selector.get_support()
 
-    # display the top features
+        self.embeded_rf_feature = self.X.loc[:,self.embeded_rf_support].columns.tolist()
 
-    self.feature_selection_df = self.feature_selection_df.sort_values(['Total','Feature'] , ascending=False)
+        return self.embeded_rf_feature
 
-    self.feature_selection_df.index = range(1, len(self.feature_selection_df)+1)
 
-    return feature_selection_df.head(num_feats)
+    #feature selection using Light GBM
+    def LGBM_selector(self):
+        self.lgbc=LGBMClassifier(n_estimators=500, learning_rate=0.05, num_leaves=32, 
+                                 colsample_bytree=0.2, reg_alpha=3, reg_lambda=1,
+                                 min_split_gain=0.01, min_child_weight=40,random_state=1)
+
+        self.embeded_lgb_selector = SelectFromModel(self.lgbc, max_features=self.num_feats)
+
+        self.embeded_lgb_selector.fit(self.X, self.y)
+
+        self.embeded_lgb_support = self.embeded_lgb_selector.get_support()
+
+        self.embeded_lgb_feature = self.X.loc[:,self.embeded_lgb_support].columns.tolist()
+
+        return self.embeded_lgb_feature
+    
+    
+    #feature selection using Extra Tree Classifier
+    def Extra_Trees_selector(self):
+        
+        self.extra_trees = ExtraTreesClassifier(random_state=1)
+        
+        self.extra_trees_selector = SelectFromModel(self.extra_trees, max_features=self.num_feats)
+        
+        self.extra_trees_selector.fit(self.X, self.y)
+        
+        self.extra_trees_support = self.extra_trees_selector.get_support()
+        
+        self.extra_trees_feature = self.X.loc[:,self.extra_trees_support].columns.tolist()
+
+        return self.extra_trees_feature
+
+
+    # put all selection together
+    def combine_selector(self):
+        self.feature_selection_df = pd.DataFrame({'Feature':self.feature_name, 'Pearson':self.cor_support, 
+                                                  'Chi-2':self.chi_support, 'RFE':self.rfe_support, 'Logistics':self.embeded_lr_support,
+                                                  'Random Forest':self.embeded_rf_support, 'LightGBM':self.embeded_lgb_support,
+                                                  'Extra_trees':self.extra_trees_support})
+
+        # count the selected times for each feature
+
+        self.feature_selection_df['Total'] = np.sum(self.feature_selection_df, axis=1)
+
+        # display the top features
+
+        self.feature_selection_df = self.feature_selection_df.sort_values(['Total','Feature'] , ascending=False)
+
+        self.feature_selection_df.index = range(1, len(self.feature_selection_df)+1)
+
+        return self.feature_selection_df.head(self.num_feats)
+
+    #save the final dataset with the selected columns    
+    def save_df_selected_columns(self):
+        
+        self.col_num = []
+
+        for i in range(len(self.feature_matrix.columns)):
+            while i < len(self.feature_matrix.columns)-1: #excluding target column
+                if self.feature_matrix.columns[i] not in (self.feature_selection_df.head(self.num_feats).loc[:,'Feature'].values):
+                    self.col_num.append(i)
+                    
+                else:
+                    pass
+                
+                i+=1
+        
+        self.df_selected_columns = self.feature_matrix.drop(self.feature_matrix.columns[self.col_num], axis=1, inplace=False)
+        self.df_selected_columns.to_csv('data_features_final.csv',index=False)
+            
+        return self.df_selected_columns
