@@ -16,7 +16,7 @@ class Visualizer():
     """
     A class that compiles several functions that visualize both numeric and categorical data for a general dataset. 
     
-    Includes functions that display missing values, correlations and results from principal component analysis 
+    Includes functions that handle ................................................................... 
     
     """
     
@@ -71,6 +71,43 @@ class Visualizer():
             plt.xlabel('Features')
             plt.ylabel('Missing Observations')
             missingno.bar(graph) 
+        
+    def distributions(self, dataframe, byclass = False, bins = 20):
+        
+        """
+        Creates a plots that explore the distributions of both numerical and categorical features
+        
+        Parameters
+        ----------
+        dataframe: a Dask dataframe
+            A Dask dataframe for which missing values are to be visualized
+        byclass: bool, default = False
+            Whether to plot distributions for each class separately
+        bins: int, default = 20
+            Numeber of bins to plot for the histograms of numeric features
+        """
+        
+        if isinstance(bins, int):
+            pass
+        else:
+            raise TypeError('Bins value must be an integer')
+        
+        df = dataframe.copy()
+        df = df.compute()
+        
+        if byclass:
+            col = self.target_feature
+        else:
+            col = None
+            
+        for i in dataframe.columns:
+            if i in self.numeric_features:
+                plot = sns.FacetGrid(data = df, col = col)
+                plot.map(plt.hist, i, density = True, bins = bins)
+            if i in self.categorical_features:
+                plot = sns.FacetGrid(data = df, col = col)
+                plt.map(sns.countplot, i)
+        
         
     def correlations(self, dataframe, method = 'pearson'):
         
