@@ -2,10 +2,12 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
-
+import sklearn
+from sklearn.preprocessing import PowerTransformer
 import dask
-from dask import compute
+import dask_ml
 import dask.dataframe as dd
+from dask import compute
 from dask_ml.preprocessing import MinMaxScaler, StandardScaler, RobustScaler
 from dask_ml.decomposition import PCA
 
@@ -158,7 +160,7 @@ class Preprocessor():
                         
         return df
         
-    def scale(self, dataframe, method = 'standardscaler', feature_range = (0, 1)):
+    def scale(self, dataframe, method = 'standardscaler', feature_range = (0, 1), train = True):
         
         """
         Method that handles missing data in numeric and categorical features
@@ -178,6 +180,8 @@ class Preprocessor():
                         interquartile range. Used for data with outliers.
         feature_range: tuple(lower_limit, upper_limit)
             Specifies the upper and lower limits of scaling; applicable only for the minmax method only.
+        train: bool, default = True
+            Specifies if the scaler is handling training or testing data
             
         Returns
         ----------
@@ -193,13 +197,56 @@ class Preprocessor():
         
         df = dataframe.copy()
         
-        if method == 'standardscaler':
-            scaler = dask_ml.preprocessing.StandardScaler()
-        elif method == 'minmax':
-            scaler = dask_ml.preprocessing.MinMaxScaler(feature_range = feature_range)
-        elif method == 'robust':
-            scaler = dask_ml.preprocessing.RobustScaler()
-            
-        df[self.numeric_features] = scaler.fit_transform(df[self.numeric_features])
+        if train:
+            if method == 'standardscaler':
+                scaler = dask_ml.preprocessing.StandardScaler()
+            elif method == 'minmax':
+                scaler = dask_ml.preprocessing.MinMaxScaler(feature_range = feature_range)
+            elif method == 'robust':
+                scaler = dask_ml.preprocessing.RobustScaler()
+            self.scaler = scaler
+            df[self.numeric_features] = scaler.fit_transform(df[self.numeric_features])
+
+        else:
+            df[self.numeric_features] = self.scaler.transform(df[self.numeric_features])
         
-        return df    
+        return df
+
+    def transformations(self, dataframe, method = 'yeo-johnson', train = True):
+        
+        """
+        Method that handles transforming data to more Gaussian-like distributions and stabilized variance using scikit-learn PowerTransformer.
+        Please use the class's 'scale' method if you wish to apply scaling before using this transformer
+        
+        Parameters
+        ----------
+        dataframe : Dask dataframe
+            A dataframe for which the target feature must be encoded
+        method: string, default = 'yeo-johnson'
+            Which transformation algorithm to use on the data
+                yeo-johnson: works for both positive and negative values
+                box-cox: works for positive values only 
+        train: bool, default = True
+            Specifies if the scaler is handling training or testing data
+        
+        Returns
+        ----------
+        df : Dask dataframe
+            A dataframe for which numeric features have been transformed to Gaussian-like distributions and stabilized variance
+    
+        """
+
+        if method not in ['yeo-johnson', 'box-cox']:
+            raise ValueError("method must be one of: yeo-johnson, box-cox")
+
+        df = dataframe.copy()
+        
+        if train:
+            transformer = sklearn.preprocessing.PowerTransformer(method = method, standardize = False)
+            df[self.numeric_features] = dd.from_array(df[self.numeric_features].map_partitions(transformer.fit_transform))
+            self.transformer = transformer
+        else:
+            df[self.numeric_features] = dd.from_array(df[self.numeric_features].map_partitions(self.transformer.transform))
+
+        return df
+
