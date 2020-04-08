@@ -41,6 +41,8 @@ class Preprocessor():
         self.target_feature = target_feature
         self.numeric_features = numeric_features
         self.categorical_features = categorical_features
+        self.scaler = None
+        self.transformer = None
         
         
         print('Preprocessor ready...')
@@ -97,7 +99,7 @@ class Preprocessor():
         Parameters
         ----------
         dataframe : Dask dataframe
-            A dataframe for which the target feature must be encoded
+            A dataframe for missing values need to be removed
         drop_threshold : float
             Percentage of missing values in a feature below which a column will be dropped
         category_threshold: integer
@@ -160,15 +162,15 @@ class Preprocessor():
                         
         return df
         
-    def scale(self, dataframe, method = 'standardscaler', feature_range = (0, 1), train = True):
+    def scale_training_data(self, dataframe, method = 'standardscaler', feature_range = (0, 1)):
         
         """
-        Method that handles missing data in numeric and categorical features
+        Method that handles scaling for numerical features for training data
         
         Parameters
         ----------
         dataframe : Dask dataframe
-            A dataframe for which the target feature must be encoded
+            A dataframe for which the features need to be scaled
         method: string, default = 'standardscaler'
             Which scaling algorithm to use on the data
                 standardscaler: applies Scikit-Learn's StandardScaler; data is centered by subtracting the mean and scaled by dividing by 
@@ -197,37 +199,58 @@ class Preprocessor():
         
         df = dataframe.copy()
         
-        if train:
-            if method == 'standardscaler':
-                scaler = dask_ml.preprocessing.StandardScaler()
-            elif method == 'minmax':
-                scaler = dask_ml.preprocessing.MinMaxScaler(feature_range = feature_range)
-            elif method == 'robust':
-                scaler = dask_ml.preprocessing.RobustScaler()
-            self.scaler = scaler
-            df[self.numeric_features] = scaler.fit_transform(df[self.numeric_features])
-
-        else:
-            df[self.numeric_features] = self.scaler.transform(df[self.numeric_features])
+        
+        if method == 'standardscaler':
+            scaler = dask_ml.preprocessing.StandardScaler()
+        elif method == 'minmax':
+            scaler = dask_ml.preprocessing.MinMaxScaler(feature_range = feature_range)
+        elif method == 'robust':
+            scaler = dask_ml.preprocessing.RobustScaler()
+        self.scaler = scaler
+        df[self.numeric_features] = scaler.fit_transform(df[self.numeric_features])
         
         return df
 
-    def transformations(self, dataframe, method = 'yeo-johnson', train = True):
-        
-        """
-        Method that handles transforming data to more Gaussian-like distributions and stabilized variance using scikit-learn PowerTransformer.
-        Please use the class's 'scale' method if you wish to apply scaling before using this transformer
+    def scale_testing_data(self, dataframe):
+
+         """
+        Method that handles scaling numerical features for testing data. Requires scale_training_data to be run prior.
         
         Parameters
         ----------
         dataframe : Dask dataframe
-            A dataframe for which the target feature must be encoded
+            A dataframe containing testing observations that need to be scaled.
+            
+        Returns
+        ----------
+        df : Dask dataframe
+            A dataframe containing test observations that has been scaled.
+    
+        """
+
+        df = dataframe.copy()
+
+        if self.scaler == None:
+            raise ValueError("Scaler not trained yet. Please run the scale_training_data method")
+        else:
+            df[self.numeric_features] = self.scaler.transform(df[self.numeric_features])
+
+        return df
+
+    def transform_training_data(self, dataframe, method = 'yeo-johnson'):
+        
+        """
+        Method that handles transforming the numerical features in the training data to more Gaussian-like distributions and stabilized variance using scikit-learn PowerTransformer.
+        Please use the class's 'scale_training_data' method if you wish to apply scaling before using this transformer. 
+        
+        Parameters
+        ----------
+        dataframe : Dask dataframe
+            A dataframe of training observations for which the numerical features need to be transformed to more Gaussian-like distributions and stabilized variance
         method: string, default = 'yeo-johnson'
             Which transformation algorithm to use on the data
                 yeo-johnson: works for both positive and negative values
                 box-cox: works for positive values only 
-        train: bool, default = True
-            Specifies if the scaler is handling training or testing data
         
         Returns
         ----------
@@ -241,12 +264,38 @@ class Preprocessor():
 
         df = dataframe.copy()
         
-        if train:
-            transformer = sklearn.preprocessing.PowerTransformer(method = method, standardize = False)
-            df[self.numeric_features] = dd.from_array(df[self.numeric_features].map_partitions(transformer.fit_transform))
-            self.transformer = transformer
+        transformer = sklearn.preprocessing.PowerTransformer(method = method, standardize = False)
+        df[self.numeric_features] = dd.from_array(df[self.numeric_features].map_partitions(transformer.fit_transform))
+        self.transformer = transformer
+
+        return df
+
+    def transform_testing_data(self, dataframe):
+
+        """
+        Method that handles transforming the numerical features in the testing data to more Gaussian-like distributions and stabilized variance using scikit-learn PowerTransformer.
+        Please use the class's 'scale_testing_data' method if you wish to apply scaling before using this transformer. 
+        
+        Parameters
+        ----------
+        dataframe : Dask dataframe
+            A dataframe of testing observations for which the numerical features need to be transformed to more Gaussian-like distributions and stabilized variance
+            
+        Returns
+        ----------
+        df : Dask dataframe
+            A dataframe of testing observations for which the numerical features have been transformed to more Gaussian-like distribution and stabilized variance
+
+        """
+
+        df = dataframe.copy()
+
+        if self.transformer == None:
+            raise ValueError("Transformer not trained yet. Please run the transform_training_data method")
         else:
             df[self.numeric_features] = dd.from_array(df[self.numeric_features].map_partitions(self.transformer.transform))
 
         return df
+
+    
 
