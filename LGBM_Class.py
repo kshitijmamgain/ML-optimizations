@@ -1,3 +1,8 @@
+
+# coding: utf-8
+'''
+This class tunes hyperparamter for LightGBM ML algorithm for Higgs dataset
+'''
 import pandas as pd
 import lightgbm as lgb
 import numpy as np
