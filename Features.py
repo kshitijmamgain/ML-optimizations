@@ -20,12 +20,19 @@ class FeatureEng():
     """
     creates new feature columns for dataset based on selected aggregations and transformations
     """
-    def __init__(self, filepath, header_type, categorical_col_name=None):
+    def __init__(self, filepath, header_type, categorical_col_name=None, label_col_name=None, list_agg_primitives=None,
+                 list_trans_primitives=['multiply_numeric'], max_depth_value=1, threshold = 0.8):
         
         self.file_path = filepath
         self.df = pd.read_csv(filepath, header=header_type)
         self.df.columns = map(str, self.df.columns)  #covert title of columns to string type
         self.categorical_col_name = categorical_col_name
+        self.label_col_name = label_col_name
+        self.list_agg_primitives = list_agg_primitives
+        self.list_trans_primitives = list_trans_primitives
+        self.max_depth_value = max_depth_value
+        self.threshold = threshold
+        
     
     #show complete dataframe
     def show(self):
@@ -35,7 +42,7 @@ class FeatureEng():
         
         return self.df
     
-    def separate_features_from_label(self, label_col_name):
+    def separate_features_from_label(self):
         """
         separates features from label column
         
@@ -50,9 +57,8 @@ class FeatureEng():
         features : dataframe containing only features columns
 
         """
-        self.label_df = self.df.loc[:,[label_col_name]]
-        self.label_col_name = label_col_name
-        self.features_df = self.df.drop(label_col_name,axis=1)
+        self.label_df = self.df.loc[:,[self.label_col_name]]
+        self.features_df = self.df.drop(self.label_col_name,axis=1)
         
         return self.label_df, self.label_col_name, self.features_df
 
@@ -75,6 +81,8 @@ class FeatureEng():
         
 
         """
+        self.separate_features_from_label()
+        
         if self.categorical_col_name == None:
             self.numeric_features = self.features_df.copy()
             return self.numeric_features
@@ -93,8 +101,7 @@ class FeatureEng():
     
     
     # Implement Feature tools to create new features
-    def new_features(self, list_agg_primitives=None, list_trans_primitives=['multiply_numeric'],
-    max_depth_value=1):
+    def new_features(self):
         
         """
         creates new features using current numeric features. 
@@ -120,7 +127,9 @@ class FeatureEng():
         self.feature_matrix : dataframe containing all the old features and new synthetized features
 
         """
-    
+        
+        self.numeric_features()
+        
         if self.numeric_features.shape[1] == self.numeric_features.select_dtypes(include=np.number).shape[1]:
             # Make an entityset and add the entity
             es = ft.EntitySet(id = 'id_1')
@@ -129,9 +138,9 @@ class FeatureEng():
             # Run deep feature synthesis
             self.feature_matrix, self.feature_defs = ft.dfs(entityset=es, target_entity='id_2',
 
-                                            agg_primitives=list_agg_primitives,
-                                            trans_primitives=list_trans_primitives,
-                                            max_depth=max_depth_value)
+                                            agg_primitives=self.list_agg_primitives,
+                                            trans_primitives=self.list_trans_primitives,
+                                            max_depth=self.max_depth_value)
             
             #Add categorical features back to the features dataframe
             if self.categorical_col_name != None:
@@ -145,7 +154,7 @@ class FeatureEng():
             raise ValueError( "Data Frame contains non-numeric values")
 
 
-    def remove_correlated_features(self, threshold):
+    def remove_correlated_features(self):
         """
         removes highly correlated features
 
@@ -159,13 +168,15 @@ class FeatureEng():
             less than threshold value
 
         """
-
-        if (threshold>0) or (threshold<1):
+        
+        self.new_features()
+        
+        if (self.threshold>0) or (self.threshold<1):
             self.col_corr = set() # Set of all the names of deleted columns
             self.corr_matrix = self.feature_matrix.corr()
             for i in range(len(self.corr_matrix.columns)):
                 for j in range(i):
-                    if (abs(self.corr_matrix.iloc[i, j]) >= threshold) and (self.corr_matrix.columns[j] not in self.col_corr):
+                    if (abs(self.corr_matrix.iloc[i, j]) >= self.threshold) and (self.corr_matrix.columns[j] not in self.col_corr):
                         self.col_name = self.corr_matrix.columns[i] # getting the name of column
                         self.col_corr.add(self.col_name)
                         if self.col_name in self.feature_matrix.columns:
@@ -186,6 +197,9 @@ class FeatureEng():
         df_new_features : dataframe containing the features and label
 
         """
+        
+        self.remove_correlated_features()
+        
         if self.label_col_name in self.feature_matrix.columns:
             raise ValueError( "Data Frame already contains {} column".format(self.label_col_name))
             
@@ -213,9 +227,10 @@ class FeatureSelect(FeatureEng):
     feature_name : list containing name of features
   
     """
+   
     #preparing data for model
     def __init__(self, df_new_features, num_features):
-
+        
         FeatureEng.df_new_features = df_new_features
         self.X = self.df_new_features.iloc[:,:-1]  #independent columns
         self.y = self.df_new_features.iloc[:,-1]   #target column
@@ -283,27 +298,6 @@ class FeatureSelect(FeatureEng):
         return self.chi_feature
 
 
-
-    #feature selection using Recursive Feature Elimination
-    def recursive_selector(self):
-        """
-        selects top n=num_feats features using Recursive Feature Elimination method.
-
-        Returns
-        ----------
-        rfe_feature :
-
-        """
-
-        self.rfe_selector = RFE(estimator=LogisticRegression(), n_features_to_select=self.num_feats, step=10, verbose=5)
-
-        self.rfe_selector.fit(self.X_norm, self.y)
-
-        self.rfe_support = self.rfe_selector.get_support()
-
-        self.rfe_feature = self.X.loc[:,self.rfe_support].columns.tolist()
-
-        return self.rfe_feature
 
 
     def log_reg_selector(self):
@@ -410,11 +404,17 @@ class FeatureSelect(FeatureEng):
 
         """
 
-
+        self.cor_pearson_selector()
+        self.chi_square_selector()
+        self.log_reg_selector()
+        self.random_forest_selector()
+        self.LGBM_selector()
+        self.Extra_Trees_selector()
+        
         self.feature_selection_df = pd.DataFrame({'Feature':self.feature_name, 'Pearson':self.cor_support, 
-                                                  'Chi-2':self.chi_support, 'RFE':self.rfe_support, 
-                                                  'Logistics':self.embeded_lr_support, 'Random Forest':self.embeded_rf_support, 
-                                                  'LightGBM':self.embeded_lgb_support,'Extra_trees':self.extra_trees_support})
+                                                  'Chi-2':self.chi_support, 'Logistics':self.embeded_lr_support,
+                                                  'Random Forest':self.embeded_rf_support, 'LightGBM':self.embeded_lgb_support,
+                                                  'Extra_trees':self.extra_trees_support})
                                                   
         # count the selected times for each feature
 
@@ -438,6 +438,7 @@ class FeatureSelect(FeatureEng):
         df_selected_columns : dataframe containing the top features and label to be used for next steps.
 
         """
+        self.combine_selector()
         
         self.col_num = []
 
