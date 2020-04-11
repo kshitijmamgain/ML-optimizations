@@ -36,7 +36,7 @@ EARLY_STOPPING_ROUNDS = 100
 SEED = 47
 
 # random search
-param_grid = {
+PARAM_GRID = {
     'num_leaves': list(range(16, 196, 4)),
     'max_bin': [254],
     'lambda_l1': list(np.linspace(0, 1)),
@@ -52,7 +52,7 @@ param_grid = {
 
 
 # Hyperopt Space
-h_space = {
+H_SPACE = {
     'num_leaves': hp.quniform('num_leaves', 16, 196, 4),
     'max_bin' : hp.quniform('max_bin', 253, 254, 1), #if using CPU just set this to 254
     'lambda_l1': hp.uniform('lambda_l1', 0.0, 1.0),
@@ -255,6 +255,6 @@ class Parameter_Tuning():
 
 obj = Parameter_Tuning(train_X, train_y)
 
-lgb_ho = obj.hyperopt_space(fn_name='lgbm_cv', space=h_space,
+lgb_ho = obj.hyperopt_space(fn_name='lgbm_cv', space=H_SPACE,
                             algo=tpe.suggest, trials=Trials())
     
