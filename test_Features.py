@@ -25,11 +25,10 @@ from sklearn.feature_selection import SelectFromModel
 class TestFeatures(unittest.TestCase):
     def test_new_features_on_normal_values (self):
         
-        x=FeatureEng('file_1.csv','infer' )
-        x.separate_features_from_label('target')
         a=[]
         b=['add_numeric', 'multiply_numeric']
-        feat_matrix,feat_defs = x.new_features(a,b,2)
+        x=FeatureEng('file_1.csv','infer', None,'target',a,b,2,0.8 )
+        feat_matrix = x.new_features()
         message = "column names do not match"
         correct_columns = ['feat1',
  'feat2',
@@ -57,22 +56,19 @@ class TestFeatures(unittest.TestCase):
 
     def test_new_features_on_containing_non_numeric_values(self):
         with pytest.raises(ValueError) as exc_info:
-            x=FeatureEng("file_2.csv",'infer')
-            x.separate_features_from_label('target')
             a=[]
             b=['add_numeric', 'multiply_numeric']
-            feat_matrix,feat_defs = x.new_features(a,b,2)
+            x=FeatureEng("file_2.csv",'infer', None,'target',a,b,2,0.8)
+            x.new_features()
 
         assert exc_info.match("Data Frame contains non-numeric values")
 
 class TestFeaturesTwo(unittest.TestCase):
     def test_df_with_new_features_on_normal_values(self):
-        x=FeatureEng('file_1.csv','infer')
-        x.separate_features_from_label('target')
         a=[]
         b=['add_numeric', 'multiply_numeric']
-        feat_matrix,feat_defs = x.new_features(a,b,2)
-        feat_matrix = x.df_with_new_features('target')
+        x=FeatureEng('file_1.csv','infer', None,'target',a,b,2,0.8)
+        feat_matrix = x.df_with_new_features()
         message = "column names do not match"
         correct_columns = ['feat1',
  'feat2',
@@ -103,12 +99,10 @@ class TestFeaturesTwo(unittest.TestCase):
     def test_df_with_new_features_on_containing_target_column(self):
         #test when target column exists in dataset (it was not removed correctly by separate_features_from_label stage)
         with pytest.raises(ValueError) as exc_info_2:
-            x=FeatureEng('file_1.csv','infer' )
-            x.separate_features_from_label('feat2')
             a=[]
             b=['add_numeric', 'multiply_numeric']
-            feat_matrix,feat_defs = x.new_features(a,b,2)
-            feat_matrix = x.df_with_new_features('target')
+            x=FeatureEng('file_1.csv','infer',None,'feat1',a,b,2,0.8 )
+            x.df_with_new_features()
 
         assert exc_info_2.match("Data Frame already contains target column")
 
@@ -116,63 +110,44 @@ class TestFeaturesTwo(unittest.TestCase):
 class TestFeatureSelect(unittest.TestCase):
 
     def test_combine_selector_on_normal_cases(self):
-        
-        x = FeatureEng('file_1.csv','infer')
-        x.separate_features_from_label('target')
+       
         a=[]
         b=['add_numeric', 'multiply_numeric']
-        feat_matrix,feat_defs = x.new_features(a,b,1)
-        feat_matrix=x.df_with_new_features('target')
+        x = FeatureEng('file_1.csv','infer',None,'target',a,b,1,0)
+        x.new_features()
 
         x_2 = FeatureSelect(x.feature_matrix, 6)
-        x_2.cor_pearson_selector()
-        x_2.chi_square_selector()
-        x_2.recursive_selector()
-        x_2.log_reg_selector()
-        x_2.random_forest_selector()
-        x_2.LGBM_selector()
-        x_2.Extra_Trees_selector()
         x_2.combine_selector()
 
         #define the correct result dataframe that we expect to get
-        values = [['feat1 + feat3',True,True,True,True,True,True,True,7],
-            ['feat3',True,True,True,True,False,True,True,6],
-            ['feat1 * feat3',True,True,True,True,True,False,True,6],
-            ['feat1 + feat2',True,True,True,True,False,True,False,5],
-            ['feat1 * feat2',True,True,True,False,True,False,True,5],
-            ['feat2 * feat3',True,True,True,True,False,False,False,4]
+        values = [['feat3',True,True,True,True,True,True,6],
+            ['feat2',True,True,True,True,True,True,6],
+            ['feat1 + feat3',True,True,True,True,True,True,6],
+            ['feat1 + feat2',True,True,True,True,True,True,6],
+            ['feat2 * feat3',True,True,True,False,False,False,3],
+            ['feat1 * feat3',True,True,True,False,False,False,3]
            ]
-        col_names = ['Feature', 'Pearson', 'Chi-2', 'RFE', 'Logistics', 'Random Forest','LightGBM','Extra_trees','Total']
+        col_names = ['Feature', 'Pearson', 'Chi-2', 'Logistics', 'Random Forest','LightGBM','Extra_trees','Total']
         df_result = pd.DataFrame(data = values, columns = col_names)
         df_result.index += 1 
 
         assert_frame_equal(df_result,x_2.combine_selector())
 
     def test_df_selected_columns_normal_case(self):
-        x = FeatureEng('file_1.csv','infer')
-        x.separate_features_from_label('target')
+        
         a=[]
         b=['add_numeric', 'multiply_numeric']
-        feat_matrix,feat_defs = x.new_features(a,b,1)
-        feat_matrix = x.remove_correlated_features(0.8)
-        feat_matrix=x.df_with_new_features('target')
+        x = FeatureEng('file_1.csv','infer',None,'target',a,b,4,0.5)
+        x.df_with_new_features()
 
-        x_2 = FeatureSelect(x.feature_matrix, 3)
-        x_2.cor_pearson_selector()
-        x_2.chi_square_selector()
-        x_2.recursive_selector()
-        x_2.log_reg_selector()
-        x_2.random_forest_selector()
-        x_2.LGBM_selector()
-        x_2.Extra_Trees_selector()
-        x_2.combine_selector()
+        x_2 = FeatureSelect(x.df_new_features, 3)
         x_2.save_df_selected_columns()
 
         #define the correct result dataframe that we expect to get
-        values = [[1,2,5,0],
-            [1,5,5,1],
+        values = [[2,5,5,0],
+            [5,5,5,1],
            ]
-        col_names = ['feat1','feat2','feat2 + feat3','target']
+        col_names = ['feat2','feat2 + feat3','feat1 * feat2 + feat3','target']
         df_result = pd.DataFrame(data = values, columns = col_names)
         #df_result.index += 0
         x_2.df_selected_columns.reset_index(drop=True, inplace=True)
