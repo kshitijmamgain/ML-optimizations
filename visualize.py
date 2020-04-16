@@ -16,7 +16,7 @@ class Visualizer():
     """
     A class that compiles several functions that visualize both numeric and categorical data for a general dataset. 
     
-    Includes functions that handle ................................................................... 
+    Includes functions that plot missing values, distributions, correlations and principal component plots
     
     """
     
@@ -38,6 +38,8 @@ class Visualizer():
         self.target_feature = target_feature
         self.numeric_features = numeric_features
         self.categorical_features = categorical_features
+        self.pc = None
+        self.projected = None
         print("Data Visualizer ready...")
         
     def missing_values(self, dataframe, byclass = False):
@@ -132,7 +134,7 @@ class Visualizer():
         sns.heatmap(corr.where(mask), annot = True, fmt = '.2f')
         plt.title('Correlation Matrix')
         
-    def principal_components(self, dataframe, plot_type = 'explained_variance', exclude_target = False):
+    def principal_components(self, dataframe, exclude_target = True):
         
         """
         Creates plots related to principal component analysis performed on the dataset
@@ -141,12 +143,9 @@ class Visualizer():
         ----------
         dataframe: a Dask dataframe
             A Dask dataframe for which missing values are to be visualized
-        plot_type: string
-            The type of principal component plot to produce. Must be one of ["explained variance", "scatter"]
+        exclude_target: bool, default = True
+            Whether to exclude the target feature from the analysis
         """
-
-        if plot_type not in ['explained_variance', 'scatter']:
-            raise ValueError("method must be one of: explained_variance, scatter")
         
         df = dataframe.copy()
         pc_features = list(df.columns).copy()
@@ -156,31 +155,33 @@ class Visualizer():
         
         if exclude_target:
             pc_features.remove(self.target_feature)
-        pc = dask_ml.decomposition.PCA(n_components = len(pc_features), svd_solver = 'randomized')
-        
+            
         df = df[pc_features]
-        
+
+        pc = dask_ml.decomposition.PCA(n_components = len(pc_features), svd_solver = 'randomized')
         projected = pc.fit_transform(df.to_dask_array(lengths = True))
-        
+
         variance = np.cumsum(pc.explained_variance_ratio_*100)
         
-        if plot_type == 'explained_variance':
-            plt.bar(range(1, len(pc_features)+1), pc.explained_variance_ratio_*100, alpha = 0.5,
-            align = 'center', label = 'Individual Explained Variance (%)')
-            plt.step(range(1, len(pc_features)+1), variance, where = 'mid',
-                     label = 'Cumulative Explained Variance (%)')
-            plt.title('Variance Explained By Principal Components')
-            plt.ylabel('Explained Variance Ratio (%)')
-            plt.xlabel('Principal Component')
-            plt.legend(loc = 'best')
-            plt.show();
+        #EXPLAINED VARIANCE PLOT
+        plt.figure()
+        plt.bar(range(1, len(pc_features)+1), pc.explained_variance_ratio_*100, alpha = 0.5,
+        align = 'center', label = 'Individual Explained Variance (%)')
+        plt.step(range(1, len(pc_features)+1), variance, where = 'mid',
+                 label = 'Cumulative Explained Variance (%)')
+        plt.title('Variance Explained By Principal Components')
+        plt.ylabel('Explained Variance Ratio (%)')
+        plt.xlabel('Principal Component')
+        plt.legend(loc = 'best')
+        plt.show();
 
-        elif plot_type == 'scatter':
-            plt.scatter(projected[:, 0], projected[:, 1],
-            c = target, edgecolor = 'none', alpha = 0.5,
-            cmap = plt.cm.get_cmap('Spectral', distinct_target))
-            plt.title('Scatter of Two Principal Components (By Class)')
-            plt.xlabel('Principal Component 1')
-            plt.ylabel('Princiapl Component 2')
-            plt.colorbar()
-            plt.show();        
+        #SCATTERPLOT
+        plt.figure()
+        plt.scatter(projected[:, 0], projected[:, 1],
+        c = target, edgecolor = 'none', alpha = 0.5,
+        cmap = plt.cm.get_cmap('Spectral', distinct_target))
+        plt.title('Scatter of Two Principal Components (By Class)')
+        plt.xlabel('Principal Component 1')
+        plt.ylabel('Princiapl Component 2')
+        plt.colorbar()
+        plt.show();        
