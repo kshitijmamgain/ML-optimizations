@@ -110,6 +110,9 @@ class Lgbmclass():
         self.y_train = y_train
         self.train_set = lgb.Dataset(data=train_X, label=train_y)
 
+        #Initializing variables
+        
+
     def lgb_crossval(self, params, optim_type):
         '''lgb cross validation model
         Paramters

@@ -140,7 +140,7 @@ class Lgbmclass():
         loss = 1 - best_score
 
         # Boosting rounds that returned the highest cv score
-        n_estimators = int(np.argmax(cv_results['auc-mean']) + 1)
+        n_estimators = int(np.argmax(cv_results['auc-mean']) + 1) # more explanation
         self.estimator = n_estimators
 
         # Write to the csv file ('a' means append)
@@ -362,6 +362,9 @@ class Lgbmclass():
         plt.savefig('roc.png')
         
     def prcurve(self):
+        '''
+        A class method to output the precision recall curve for an instance
+        '''
         recall, precision, pr_auc = self.recall, self.precision, self.pr_auc
         # plot the precision-recall curves
         no_skill = len(test_y[test_y==1]) / len(test_y)
@@ -381,6 +384,9 @@ class Lgbmclass():
         plt.legend(fontsize=16)
         plt.savefig('prcurve.png')
     def fpr_fnr(self):
+        '''
+        A class method to output the fpr_fnr curve for an instance
+        '''
         lw = 2
         fpr, fnr, thresholds = self.fpr, self.fnr, self.thresholds
         plt.figure(figsize = (16,8))
