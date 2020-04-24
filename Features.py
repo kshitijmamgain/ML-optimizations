@@ -20,12 +20,92 @@ class FeatureEng():
     """
     creates new feature columns for dataset
     based on selected aggregations and transformations
+    
     """
 
     def __init__(self, filepath, header_type, categorical_col_name=None,
                  label_col_name=None, list_agg_primitives=None,
                  list_trans_primitives=['multiply_numeric'], max_depth_value=1, threshold=0.8):
 
+        """
+        Initializes an instance of the FeatureEng class
+
+        Parameters
+        ----------
+        filepath : str
+            the location of dataset. The string could be a URL. 
+            Valid URL schemes include http, ftp, s3, and file. For file URLs, a host is expected.
+        
+        header_type : int, list of int
+            Row number(s) to use as the column names, and the start of the data.
+            if header_type = 'infer', column names are inferred from the first line of the file, 
+            if column names are passed explicitly then the behavior is identical to header=None. 
+        
+        categorical_col_name :  list[str], default = None
+            The name of categorical columns
+        
+        label_col_name : str, default = None
+            The name of label(target) column of dataframe
+
+        list_agg_primitives : list[str or AggregationPrimitive], default = None
+            list of Aggregation Feature types to apply.
+                example types of aggreation for ft.dfs:
+                ["sum", "std", "max", "skew", "min", "mean", "count",
+				"percent_true", "num_unique", "mode"]
+
+        list_trans_primitives : list[str or TransformPrimitive], default = ['multiply_numeric']
+            List of Transform Feature functions to apply.
+            example types of aggreation for ft.dfs:
+            ["day", "year", "month", "weekday", "haversine", "num_words", "num_characters"]
+        For more available perimitives : https://primitives.featurelabs.com/
+
+        max_depth_value : int, default = 1
+            Maximum allowed depth of features.
+
+        threshold : int, default = 0.8
+            Number between 0 and 1 which determines maximum features correlation limit
+
+        """
+        if not isinstance(filepath, str):
+            raise TypeError('Filepath must be a string')
+
+        if not isinstance(categorical_col_name, list):
+            raise TypeError(
+        'categorical column names must be a list of strings')
+
+        if not all(isinstance(s, str) for s in categorical_col_name):
+            raise TypeError(
+        'categorical column names must be a list of strings')
+
+        if not isinstance(label_col_name, str):
+            raise TypeError('Label column name must be a string')
+
+        if not isinstance(list_agg_primitives, list):
+            raise TypeError(
+        'list of aggresgation primitives must be a list of strings')
+
+        if not all(isinstance(s, str) for s in list_agg_primitives):
+            raise TypeError(
+        'list of aggresgation primitives must be a list of strings')
+
+        if not isinstance(list_trans_primitives, list):
+            raise TypeError(
+        'list of transformation primitives must be a list of strings')
+
+        if not all(isinstance(s, str) for s in list_trans_primitives):
+            raise TypeError(
+        'list of transformation primitives must be a list of strings')
+
+        if not isinstance(max_depth_value, int):
+            raise TypeError('Max depth value must be an integer')
+
+        if not isinstance(threshold, float):
+            raise TypeError('threshold value must be a float')
+        
+        if (threshold < 0) or (threshold > 1):
+            raise ValueError(
+                "Threshold integers must be in range of (0,1)")
+        
         self.file_path = filepath
         self.df = pd.read_csv(filepath, header=header_type)
         # convert title of columns to string type
@@ -48,10 +128,6 @@ class FeatureEng():
         """
         separates features from label column
 
-        Parameters
-        ----------
-        label_col_name (str) : the name of label(output) column of dataframe
-
         Returns
         ----------
         label_df : dataframe containing only label(output) column
@@ -68,10 +144,6 @@ class FeatureEng():
         separates numeric features, from categorical features and label columns,
         and saves them into 3 separate dataframes
 
-        Parameters
-        ----------
-        categorical_col_name (str) : the name of categorical columns
-
         Returns
         ----------
         cat_features : dataframe containing only categorical features columns
@@ -85,8 +157,8 @@ class FeatureEng():
             return self.numeric_features
         else:
             self.feat_df = self.df.drop(self.label_col_name, axis=1)
-            self.cat_features = self.feat_df.loc[:, [
-                self.categorical_col_name]]
+            self.cat_features = self.feat_df.loc[:, 
+                self.categorical_col_name]
             self.numeric_features = self.feat_df.drop(
                 self.categorical_col_name, axis=1)
             return self.numeric_features
@@ -95,28 +167,11 @@ class FeatureEng():
     def new_features(self):
         """
         creates new features using current numeric features.
-        It only accepts numeric features as input.
-
-        Parameters
-        ----------
-        list_agg_primitives(list[str or AggregationPrimitive], optional):
-            list of Aggregation Feature types to apply.
-                example types of aggreation for ft.dfs:
-                ["sum", "std", "max", "skew", "min", "mean", "count",
-				"percent_true", "num_unique", "mode"]
-
-        list_trans_primitives (list[str or TransformPrimitive], optional):
-            List of Transform Feature functions to apply.
-                example types of aggreation for ft.dfs:
-                ["day", "year", "month", "weekday",
-                    "haversine", "num_words", "num_characters"]
-        For more available perimitives : https://primitives.featurelabs.com/
-
-        max_depth_value (int) : Maximum allowed depth of features.
+        IDatafarme must only have numeric values.
 
         Returns
         ----------
-        self.feature_matrix : dataframe containing all the old features
+        feature_matrix : dataframe containing all the old features
         and new synthetized features
         """
         self.numeric_features()
@@ -146,11 +201,6 @@ class FeatureEng():
         """
         removes highly correlated features
 
-        Parameters
-        ----------
-        threshold (int) : number between 0 and 1 which determines maximum
-		features correlation limit
-
         Returns
         ----------
         feature_matrix : dataframe containing all the features that have correlation
@@ -158,24 +208,21 @@ class FeatureEng():
         """
         self.new_features()
 
-        if (self.threshold > 0) or (self.threshold < 1):
-            self.col_corr = set()  # Set of all the names of deleted columns
-            self.corr_matrix = self.feature_matrix.corr()
-            for i in range(len(self.corr_matrix.columns)):
-                for j in range(i):
-                    if ((abs(self.corr_matrix.iloc[i, j]) >= self.threshold) and
-					(self.corr_matrix.columns[j] not in self.col_corr)):
-                        # getting the name of column
-                        self.col_name = self.corr_matrix.columns[i]
-                        self.col_corr.add(self.col_name)
-                        if self.col_name in self.feature_matrix.columns:
-                            # deleting the column from the dataset
-                            del self.feature_matrix[self.col_name]
+        self.col_corr = set()  # Set of all the names of deleted columns
+        self.corr_matrix = self.feature_matrix.corr()
+        for i in range(len(self.corr_matrix.columns)):
+            for j in range(i):
+                if ((abs(self.corr_matrix.iloc[i, j]) >= self.threshold) and
+				(self.corr_matrix.columns[j] not in self.col_corr)):
+                    # getting the name of column
+                    self.col_name = self.corr_matrix.columns[i]
+                    self.col_corr.add(self.col_name)
+                    if self.col_name in self.feature_matrix.columns:
+                        # deleting the column from the dataset
+                        del self.feature_matrix[self.col_name]
 
-            return self.feature_matrix
-        else:
-            raise ValueError(
-                "remove_correlated_features function accepts integers in range of (0,1)")
+        return self.feature_matrix
+        
 
     def df_with_new_features(self):
         """
@@ -199,12 +246,16 @@ class FeatureEng():
 
 class FeatureSelect(FeatureEng):
     """
-    combines several methods to choose the best features
+    combines several methods to choose the best features.
+    This module prepares and saves dataframe with selected features for 
+    the next steps of project.
 
     Parameters
     ----------
-    df_new_features(dataframe) : processed dataframe from FeatureEng Parent class
-    num_feats(int) : number of features to be selected
+    df_new_features : dataframe 
+    	processed dataframe from FeatureEng Parent class
+    num_feats : int
+    	number of features to be selected
 
     Returns
     ----------
@@ -215,6 +266,9 @@ class FeatureSelect(FeatureEng):
     """
 
     def __init__(self, df_new_features, num_features):
+        
+        if not isinstance(num_features, int):
+            raise TypeError('number of features must be an integer')
 
         FeatureEng.df_new_features = df_new_features
         # independent columns
@@ -232,8 +286,9 @@ class FeatureSelect(FeatureEng):
 
         Returns
         ----------
-        cor_support :
-        cor_feature :
+        cor_support : shows if a feature is selected or not. 1 for selected,
+         and 0 for not selected
+        cor_feature : list of selected features
         """
         self.cor_list = []
 
@@ -249,7 +304,7 @@ class FeatureSelect(FeatureEng):
         self.cor_feature = self.X.iloc[:, np.argsort(
             np.abs(self.cor_list))[-self.num_feats:]].columns.tolist()
 
-        # feature selection? 0 for not select, 1 for select
+        # 0 for not select, 1 for select
         self.cor_support = [
             True if i in self.cor_feature else False for i in self.feature_name]
 
@@ -261,7 +316,7 @@ class FeatureSelect(FeatureEng):
 
         Returns
         ----------
-        chi_feature :
+        chi_feature : list of selected features
         """
         self.chi_selector = SelectKBest(chi2, k=self.num_feats)
         self.chi_selector.fit(self.X_norm, self.y)
@@ -276,7 +331,7 @@ class FeatureSelect(FeatureEng):
 
         Returns
         ----------
-        embeded_lr_feature :
+        embeded_lr_feature : list of selected features
         """
 
         self.embeded_lr_selector = SelectFromModel(LogisticRegression(penalty="l2"),
@@ -294,7 +349,7 @@ class FeatureSelect(FeatureEng):
 
         Returns
         ----------
-        embeded_rf_feature :
+        embeded_rf_feature : list of selected features
         """
         self.embeded_rf_selector = SelectFromModel(RandomForestClassifier
 		(n_estimators=100, random_state=1), max_features=self.num_feats)
@@ -311,7 +366,7 @@ class FeatureSelect(FeatureEng):
 
         Returns
         ----------
-        embeded_lgb_feature :
+        embeded_lgb_feature : list of selected features
 
         """
         self.lgbc = LGBMClassifier(n_estimators=500, learning_rate=0.05, num_leaves=32,
@@ -333,7 +388,7 @@ class FeatureSelect(FeatureEng):
 
         Returns
         ----------
-        extra_trees_feature :
+        extra_trees_feature : list of selected features
         """
         self.extra_trees = ExtraTreesClassifier(random_state=1)
         self.extra_trees_selector = SelectFromModel(
@@ -361,11 +416,11 @@ class FeatureSelect(FeatureEng):
         self.LGBM_selector()
         self.Extra_Trees_selector()
         self.feature_selection_df = pd.DataFrame({'Feature': self.feature_name,
-                                                  'Pearson': self.cor_support, 'Chi-2': self.chi_support,
-                                                  'Logistics': self.embeded_lr_support,
-												  'Random Forest': self.embeded_rf_support,
-                                                  'LightGBM': self.embeded_lgb_support,
-												  'Extra_trees': self.extra_trees_support})
+        'Pearson': self.cor_support, 'Chi-2': self.chi_support,
+        'Logistics': self.embeded_lr_support,
+		'Random Forest': self.embeded_rf_support,
+        'LightGBM': self.embeded_lgb_support,
+		'Extra_trees': self.extra_trees_support})
 
         # count the selected times for each feature
         self.feature_selection_df['Total'] = np.sum(
