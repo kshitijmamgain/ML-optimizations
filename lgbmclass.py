@@ -16,15 +16,15 @@ import matplotlib.pyplot as plt
 
 
 # defining constant
-MAX_EVALS = 5
+MAX_EVALS = 100
 N_FOLDS = 3
 NUM_BOOST_ROUNDS = 10000
 EARLY_STOPPING_ROUNDS = 100
 SEED = 47
-RESULT_PATH = '/content/lgbm.csv'
-FILE_PATH = "drive/My Drive/Colab Notebooks/train_test_files_sample.csv" 
+RESULT_PATH = '/home/jupyter/kshitij/higgs-feature-engg/content/lgbm.csv'
+FILE_PATH = "/home/jupyter/train_test_files/sample.csv"
 OBJECTIVE_LOSS = 'binary' # use cross_entropy
-# "/home/jupyter/train_test_files/sample.csv" for google cloud
+# "drive/My Drive/Colab Notebooks/train_test_files_sample.csv"  for google colab
 
 # starting with storing the data as data frame
 df = pd.read_csv(FILE_PATH)
@@ -32,8 +32,8 @@ df.drop(columns='Unnamed: 0', inplace=True)
 
 # making a smaller df for quick testing
 df_s, _ = train_test_split(df, random_state=30, train_size=0.01)
-train_X = df_s.drop(columns='0')
-train_y = df_s['0']
+train_X = df.drop(columns='0')
+train_y = df['0']
 
 # drop last columns
 def col_keep(df):
@@ -48,7 +48,6 @@ PARAM_GRID = {
     'lambda_l1': list(np.linspace(0, 1)),
     'lambda_l2': list(np.linspace(0, 1)),
     'min_data_in_leaf' : list(range(20, 500, 10)),
-    'class_weight': [None, 'balanced'],
     'boosting_type': ['gbdt', 'goss'],
     'learning_rate' : list(np.logspace(np.log(0.05), np.log(0.2), base=np.exp(1), num=1000)),
     'feature_fraction': list(np.linspace(0.4, 1.0)),
@@ -66,7 +65,6 @@ H_SPACE = {
     'lambda_l1': hp.uniform('lambda_l1', 0.0, 1.0),
     'lambda_l2': hp.uniform("lambda_l2", 0.0, 1.0),
     'min_data_in_leaf' : hp.quniform('min_data_in_leaf', 20, 500, 10),
-    'class_weight': hp.choice('class_weight', [None, 'balanced']),
     'boosting_type': hp.choice('boosting_type',
                                [{'boosting_type': 'gbdt',
                                  'subsample': hp.uniform('gdbt_subsample', 0.5, 1)},
@@ -182,7 +180,7 @@ class Lgbmclass():
         fn_name = 'optuna_obj'
         fn = getattr(self, fn_name)
         try:
-            study = optuna.create_study(direction='minimize')
+            study = optuna.create_study(direction='minimize', sampler=optuna.samplers.TPESampler(seed=SEED))
             study.optimize(fn, n_trials=MAX_EVALS)
         except Exception as e:
             return {'exception': str(e)}
@@ -245,7 +243,6 @@ class Lgbmclass():
             'lambda_l1': trial.suggest_loguniform('lambda_l1', 1e-8, 10.0),
             'lambda_l2': trial.suggest_loguniform("lambda_l2", 1e-8, 10.0),
             'min_data_in_leaf' : trial.suggest_int('min_data_in_leaf', 20, 500),
-            'class_weight': trial.suggest_categorical('class_weight', [None, 'balanced']),
             'boosting_type': trial.suggest_categorical('boosting_type', ['gbdt', 'goss']),
             # removed 'dart'
             'learning_rate' : trial.suggest_loguniform('learning_rate', 0.05, 0.25),
@@ -279,7 +276,7 @@ class Lgbmclass():
         of results to be saved."""
         optim_type = 'Random'
         self.iteration += 1
-
+        random.seed(SEED)
         # Subsampling (only applicable with 'goss')
         subsample_dist = list(np.linspace(0.5, 1, 100))
 
@@ -301,14 +298,13 @@ class Lgbmclass():
         Parameters
         ----------
         x_test: test set; y_test: test label"""
-
+        self.test_x, self.test_y = x_test, y_test
         for parameter_name in ['num_leaves', 'subsample_for_bin', 'min_data_in_leaf',
                                'max_bin', 'bagging_freq']:
             self.params[parameter_name] = int(self.params[parameter_name])
         self.gbm = lgb.train(self.params, self.train_set,
                              feature_name=['f' + str(i + 1) for i in range(train_X.shape[-1])])
         self.pred = self.gbm.predict(x_test)
-        self.test_y = y_test
         print("Model will be trained with best parameters obtained from Hyperopt ... \n\n\n")
         print("Model trained with {} estimators on the following parameters: \n{}".format(self.estimator, self.params))
 
@@ -321,23 +317,24 @@ class Lgbmclass():
         self.fnr = 1- self.tpr
         print('fnr check')
         self.roc_auc = auc(self.fpr, self.tpr)
-        print('roc_Auc check')
+        print('roc_auc check')
         self.precision, self.recall, _ = precision_recall_curve(self.test_y, pred)
         print('precision recall check')
         self.pr_auc = auc(self.recall, self.precision)
-        print('pr_acu check')
+        print('pr_auc check')
         eval_list = ['feature_importance','roc', 'prcurve', 'fpr_fnr']
         for eval_name in eval_list:
-            func = getattr(self,eval_name)
-            func()
-        else:
-            print('Not valid evaluation type')
+            try:
+                func = getattr(self,eval_name)
+                func()
+            except:
+                print('Not valid evaluation type')
 
     def feature_importance(self):
         print('Plotting feature importances...')
         ax = lgb.plot_importance(self.gbm, max_num_features=10)
         plt.savefig('feature_importance.png')
-        
+              
 
     def roc(self):
         fpr, tpr, roc = self.fpr, self.tpr, self.roc_auc
@@ -366,6 +363,7 @@ class Lgbmclass():
         A class method to output the precision recall curve for an instance
         '''
         recall, precision, pr_auc = self.recall, self.precision, self.pr_auc
+        test_y =  self.test_y
         # plot the precision-recall curves
         no_skill = len(test_y[test_y==1]) / len(test_y)
         plt.figure(figsize = (16,8))
@@ -406,4 +404,7 @@ class Lgbmclass():
 
 
 obj = Lgbmclass(train_X, train_y)
+obj.parameter_tuning('optuna_space')
+obj.train(train_X, train_y)
+obj.evaluate
 
