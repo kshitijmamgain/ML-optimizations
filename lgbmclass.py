@@ -82,7 +82,7 @@ H_SPACE = {
 
 class Lgbmclass():
     '''Parameter Tuning Class tunes the LightGBM model with different optimization techniques -
-    Hyperopt, Optuna and RandomSearch. At present method for CV using Hyperopt is defined'''
+    Hyperopt, Optuna and RandomSearch.'''
     iteration = 0
     def __init__(self, x_train, y_train):
         '''Initializes the Parameter tuning class and also initializes LightGBM dataset object
@@ -98,8 +98,8 @@ class Lgbmclass():
 
         # File to save first results
         self.out_file = RESULT_PATH
-        of_connection = open(self.out_file, 'w')
-        writer = csv.writer(of_connection)
+        with open(self.out_file, 'w', newline='') as of_connection:
+            writer = csv.writer(of_connection)
 
         # Write the headers to the file
         writer.writerow(['loss', 'params', 'iteration', 'estimators', 'train_time','optim_type'])
@@ -108,6 +108,13 @@ class Lgbmclass():
         self.x_train = x_train
         self.y_train = y_train
         self.train_set = lgb.Dataset(data=train_X, label=train_y)
+
+    def parameter_tuning(self, tune_type, diagnostic=False):
+        tuner = getattr(self, tune_type)
+        if diagnostic:
+            return(tuner())
+        else:
+            return self.params
 
     def lgb_crossval(self, params, optim_type):
         '''lgb cross validation model
@@ -148,10 +155,6 @@ class Lgbmclass():
         writer.writerow([loss, params, self.iteration, n_estimators, run_time, optim_type])
 
         return loss, params, n_estimators, run_time
-
-    def parameter_tuning(self, tune_type):
-        tuner = getattr(self, tune_type)
-        return(tuner())
 
     def hyperopt_space(self):
         '''A method to call the hyperopt optimization for the data
