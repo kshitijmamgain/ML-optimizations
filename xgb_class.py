@@ -13,9 +13,11 @@ from timeit import default_timer as timer
 import random
 import seaborn as sns
 import shap
+import csv
 
 
-class XGB_Higgs():
+
+class XGBoostModel():
 
   """
   Executes methods that split a dataset into training and testing sets, runs an 
@@ -24,7 +26,7 @@ class XGB_Higgs():
   RandomSearch.
   """
 
-  def __init__(self, filename, max_evals, n_fold, seed):
+  def __init__(self, filename, max_evals, n_fold, seed, GPU):
 
     """
     Initializes an instance of the XGB_Higgs Class
@@ -53,6 +55,7 @@ class XGB_Higgs():
     self.nfold = n_fold
     self.x_train, self.x_test = None, None
     self.y_train, self.y_test = None, None
+    self.ratio = None
     self.best_hyperopt_params = None
     self.optuna_params = None
     self.random_search_params = None
@@ -62,6 +65,7 @@ class XGB_Higgs():
     self.output = None
     self.dtrain, self.dtest = None,None
     self.seed = seed
+    self.GPU = GPU
     self.trained = False
     self.tested = False
 
@@ -73,9 +77,14 @@ class XGB_Higgs():
     """
     x = self.data.iloc[:, 1:22]
     y = self.data.iloc[:, 0]
-    self.x_train, self.x_test, self.y_train, self.y_test = train_test_split(x, y, test_size = 0.3, random_state = self.seed)
+    xtrain, xtest, ytrain, ytest = train_test_split(x, y, test_size = 0.3,
+                                                    random_state = self.seed)
+    self.x_train, self.y_train = xtrain, ytrain
+    self.x_test, self.y_test = xtest, ytest
     self.dtrain = xgb.DMatrix(self.x_train, label = self.y_train)
     self.dtest = xgb.DMatrix(self.x_test)
+    label = self.dtrain.get_label()
+    self.ratio = float(np.sum(label == 0)) / np.sum(label == 1)
 
 
   def cross_validation(self, space):
@@ -156,8 +165,7 @@ class XGB_Higgs():
       booster = [{"booster": "gbtree"},
 
                        {"booster": "dart",
-                        "sample_type":
-                            hp.choice("sample_type", ["uniform", "weighted"]),
+                        "sample_type": hp.choice("sample_type", ["uniform", "weighted"]),
                         "normalize_type":
                             hp.choice("normalize_type", ["tree", "forest"]),
                         "rate_drop":
@@ -165,25 +173,43 @@ class XGB_Higgs():
                         "skip_drop":
                             hp.uniform("skip_drop", 0, 1)}]
 
+      max_bin = hp.choice('max_bin', [128, 256, 512, 1024])    
+      tree_method = [{"tree_method": "auto"},
+                     {"tree_method": "exact"},
+                     {"tree_method": "hist",
+                      "max_bin": max_bin},
+                     {"tree_method": "approx",
+                      "sketch_eps": hp.quniform("sketch_eps", 0, 1, 0.05)}]
+      if self.GPU == True:
+        tree_method.append({"tree_method": "gpu_hist",
+                            "single_precision_histogram": hp.choice("single_precision_histogram", [True, False]),
+                            "deterministic_histogram": hp.choice("deterministic_histogram", [True, False]),
+                            "max_bin": max_bin})
+
+
       params = {
-                "silent": 1,
                 "objective": "binary:logistic",
                 "eval_metric": "logloss",
+                "verbosity": 1,
+                "disable_default_eval_metric": 1,
                 "booster": hp.choice("booster", booster),
                 "reg_lambda": hp.quniform("reg_lambda", 1, 2, 0.1),
                 "reg_alpha": hp.quniform("reg_alpha", 0, 10, 1),
-                "verbosity": 2,
-                "n_estimators":
-                    hp.choice("n_estimators", np.arange(5, 10, 1, dtype=int)),
-                "max_depth":
-                    hp.choice("max_depth", np.arange(1, 14, dtype=int)),
+                "max_delta_step": hp.quniform("max_delta_step", 1, 10, 1),
+                "n_estimators": hp.choice("n_estimators", np.arange(5, 10, 1, dtype=int)),
+                "max_depth": hp.choice("max_depth", np.arange(1, 14, dtype=int)),
                 "eta": hp.quniform("eta", 0.025, 0.5, 0.025),
                 "gamma": hp.quniform("gamma", 0.5, 1.0, 0.05),
                 "grow_policy": hp.choice("grow_policy", grow_policy),
                 "min_child_weight": hp.quniform("min_child_weight", 1, 10, 1),
-                "subsample": hp.quniform("subsample", 0.7, 1, 0.05),
-                "colsample_bytree":
-                    hp.quniform("colsample_bytree", 0.7, 1, 0.05)
+                "subsample": hp.quniform("subsample", 0, 1, 0.05),
+                "sampling_method": "uniform",
+                "colsample_bytree": hp.quniform("colsample_bytree", 0.1, 1, 0.05), 
+                "colsample_bylevel": hp.quniform("colsample_bylevel", 0.1, 1, 0.05),   
+                "colsample_bynode": hp.quniform("colsample_bynode", 0.1, 1, 0.05),   
+                "tree_method": hp.choice("tree_method", tree_method),
+                "scale_pos_weight": self.ratio,
+                "predictor": "cpu_predictor"
                 }
 
       return params
@@ -225,15 +251,35 @@ class XGB_Higgs():
             space["rate_drop"] = rate_drop
             space["skip_drop"] = skip_drop
 
+      if space["tree_method"]["tree_method"] == "approx":
+            sketch_eps = space["tree_method"].get("sketch_eps")
+            space["sketch_eps"] = sketch_eps
+
+      if space["tree_method"]["tree_method"] not in ["approx", "auto", "exact"]:
+            max_bin = space["tree_method"].get("max_bin")
+            space["max_bin"] = max_bin
+
+      if space["tree_method"]["tree_method"] == "gpu_hist":
+            single_precision_histogram = space["tree_method"].get("single_precision_histogram")
+            deterministic_histogram = space["tree_method"].get("deterministic_histogram")
+            space["single_precision_histogram"] = single_precision_histogram
+            space["deterministic_histogram"] = deterministic_histogram
+            space["sampling_method"] = "gradient_based"
+            space["predictor"] = "gpu_predictor"
+
       space["grow_policy"] = space["grow_policy"]["grow_policy"]
-      space["booster"] = space["booster"]["booster"] 
+      space["booster"] = space["booster"]["booster"]
+      space["tree_method"] = space["tree_method"]["tree_method"]
 
       print("Training with params: ")
       print(space)
 
       results = self.cross_validation(space)
 
-      self.hyperopt_results = self.hyperopt_results.append({'params': results['params'], 'loss': results['loss'], 'variance': results['variance'], 'time': results['time']}, ignore_index = True)
+      self.hyperopt_results = self.hyperopt_results.append({'params': results['params'],
+                                                            'loss': results['loss'],
+                                                            'variance': results['variance'],
+                                                            'time': results['time']}, ignore_index = True)
       
       result_dict = {'loss': results['loss'], 'status': STATUS_OK, 'parameters': results['params']}
 
@@ -288,35 +334,34 @@ class XGB_Higgs():
         The value of the loss function cross-validated over n-folds for the
         current set of hyperparameters for the trial
       """
+      if self.GPU == True:
+        tree_method_list = ["auto", "exact", "approx", "hist", "gpu_hist"]
+      else:
+        tree_method_list = ["auto", "exact", "approx", "hist"]
 
       space = {
-          "silent": 1,
           "objective": "binary:logistic",
           "eval_metric": "logloss",
-          "verbosity": 2,
-          "booster":
-                    trial.suggest_categorical("booster", ["gbtree", "dart"]),
-          "reg_lambda":
-                    trial.suggest_int("reg_lambda", 1, 2),
-          "reg_alpha":
-                    trial.suggest_int("reg_alpha", 0, 10),
-          "n_estimators":
-                    trial.suggest_int("n_estimators", 5, 10),
-          "max_depth":
-                    trial.suggest_int("max_depth", 1, 14),
-          "eta":
-                    trial.suggest_uniform("eta", 0.025, 0.5),
-          "gamma":
-                    trial.suggest_uniform("gamma", 0.5, 1.0),
-          "grow_policy":
-                    trial.suggest_categorical(
-                                    "grow_policy", ["depthwise", "lossguide"]),
-          "min_child_weight":
-                    trial.suggest_uniform("min_child_weight", 1, 10),
-          "subsample":
-                    trial.suggest_uniform("subsample", 0.7, 1),
-          "colsample_bytree":
-                    trial.suggest_uniform("colsample_bytree", 0.7, 1)
+          "verbosity": 1,
+          "disable_default_eval_metric": 1,
+          "booster": trial.suggest_categorical("booster", ["gbtree", "dart"]),
+          "reg_lambda": trial.suggest_int("reg_lambda", 1, 2),
+          "reg_alpha": trial.suggest_int("reg_alpha", 0, 10),
+          "n_estimators": trial.suggest_int("n_estimators", 5, 10),
+          "max_delta_step": trial.suggest_int("max_delta_step", 1, 10),
+          "max_depth": trial.suggest_int("max_depth", 1, 14),
+          "eta": trial.suggest_uniform("eta", 0.025, 0.5),
+          "gamma": trial.suggest_uniform("gamma", 0.5, 1.0),
+          "grow_policy": trial.suggest_categorical("grow_policy", ["depthwise", "lossguide"]),
+          "min_child_weight": trial.suggest_uniform("min_child_weight", 1, 10),
+          "subsample": trial.suggest_uniform("subsample", 0.5, 1),
+          "sampling_method": "uniform",
+          "colsample_bytree": trial.suggest_uniform("colsample_bytree", 0.1, 1),
+          "colsample_bylevel": trial.suggest_uniform("colsample_bylevel", 0.1, 1),
+          "colsample_bynode": trial.suggest_uniform("colsample_bynode", 0.1, 1),
+          "tree_method": trial.suggest_categorical("tree_method", tree_method_list),
+          "scale_pos_weight": self.ratio,
+          "predictor": "cpu_predictor"
                 }
 
       if space["grow_policy"] == "lossguide":
@@ -329,6 +374,20 @@ class XGB_Higgs():
                                         "normalize_type", ["tree", "forest"])
           space["rate_drop"] = trial.suggest_uniform("rate_drop", 0, 1)
           space["skip_drop"] = trial.suggest_uniform("skip_drop", 0, 1)
+
+      if space["tree_method"] == "hist":
+          space["max_bin"] = trial.suggest_categorical("max_bin", [2**7, 2**8, 2**9, 2**10])
+
+      if space["tree_method"] == "approx":
+          space["sketch_eps"] = trial.suggest_uniform("sketch_eps", 0, 1)
+
+      if space["tree_method"] == "gpu_hist":
+          space["single_precision_histogram"] = trial.suggest_categorical("single_precision_histogram", [True, False])
+          space["deterministic_histogram"] = trial.suggest_categorical("deterministic_histogram", [True, False])
+          space["max_bin"] = trial.suggest_categorical("max_bin", [2**7, 2**8, 2**9, 2**10])
+          space["sampling_method"] = "gradient_based"
+          space["subsample"] = trial.suggest_uniform("subsample", 0.1, 1)
+          space["predictor"] = "gpu_predictor"
 
       results = self.cross_validation(space)
 
@@ -378,28 +437,41 @@ class XGB_Higgs():
         algorithm
       """
 
+      if self.GPU == True:
+        tree_method_list = ["auto", "exact", "approx", "hist", "gpu_hist"]
+      else:
+        tree_method_list = ["auto", "exact", "approx", "hist"]
+
       params = {
-          "silent": [1],
           "objective": ["binary:logistic"],
           "eval_metric": ["logloss"],
+          "disable_default_eval_metric": [1],
           "booster": ["gbtree", "dart"],
           "reg_lambda": np.arange(1, 2, 0.1),
           "reg_alpha": np.arange(0, 10, 1),
-          "verbosity": [2],
+          "verbosity": [1],
           "n_estimators": np.arange(5, 10, 1),
+          "max_delta_step": np.arange(1, 10, 1),
           "max_depth": np.arange(1, 14),
           "eta": np.arange(0.025, 0.5, 0.025),
           "gamma": np.arange(0.5, 1.0, 0.05),
           "grow_policy": ["depthwise", "lossguide"],
           "min_child_weight": np.arange(1, 10, 1),
-          "subsample": np.arange(0.7, 1, 0.05),
-          "colsample_bytree": np.arange(0.7, 1, 0.05),
+          "subsample": np.arange(0.5, 1, 0.05),
+          "sampling_method": ["uniform"],
+          "colsample_bytree": np.arange(0.1, 1, 0.05),
+          "colsample_bylevel": np.arange(0.1, 1, 0.05),
+          "colsample_bynode": np.arange(0.1, 1, 0.05),
+          "tree_method": tree_method_list,
+          "scale_pos_weight": [self.ratio],
+          "predictor": ["cpu_predictor"],
           "max_leaves": np.arange(0, 10, 1),
           "sample_type": ["uniform", "weighted"],
           "normalize_type": ["tree", "forest"],
           "rate_drop": np.linspace(0, 1),
           "skip_drop": np.linspace(0, 1)
           }
+  
       return params
 
     space = random_params()
@@ -425,7 +497,11 @@ class XGB_Higgs():
 
       results = self.cross_validation(space)
 
-      self.random_search_results = self.random_search_results.append({'params': results['params'], 'loss': results['loss'], 'variance': results['variance'], 'time': results['time']}, ignore_index = True)
+      self.random_search_results = self.random_search_results.append({'params': results['params'],
+                                                                      'loss': results['loss'],
+                                                                      'variance': results['variance'],
+                                                                      'time': results['time']}, ignore_index = True)
+
 
     for i in range(self.max_evals):
 
@@ -491,7 +567,8 @@ class XGB_Higgs():
 
     print('Starting Testing...')
     for i in self.output:
-      prediction = self.output[i]['model'].predict(self.dtest)
+      prediction = self.output[i]['model'].predict(self.dtest,
+                                                   ntree_limit = self.output[i]['params']['n_estimators'])
       prediction = np.float64(prediction)
       self.output[i]['prediction'] = prediction
       score = log_loss(self.y_test, prediction)
@@ -500,6 +577,21 @@ class XGB_Higgs():
     self.tested = True
     print(self.output)
     print('\n')
+
+
+    csv_columns = ['random_search', 'optuna', 'hyperopt']
+    dict_data = [self.output]
+    csv_file = "XGBoostOutput.csv"
+    try:
+        with open(csv_file, 'w') as csvfile:
+            writer = csv.DictWriter(csvfile, fieldnames=csv_columns)
+            writer.writeheader()
+            for data in dict_data:
+                writer.writerow(data)
+    except IOError:
+        print("I/O error")
+    data=pd.read_csv(csv_file)
+    print(data)
 
   def feature_importance(self, importance_type = 'gain'):
 
@@ -513,9 +605,10 @@ class XGB_Higgs():
       Metric to evaluate feature importance
     """
     if importance_type not in ['weight', 'gain', 'cover', 'total_gain', 'total_cover', 'shap']:
-      raise ValueError('Importance Type not supported. Must be among: \'weight', 'gain', 'cover', 'total_gain', 'total_cover', 'shap')
+      raise ValueError('Importance Type not supported. Must be among: \'weight', 'gain', 'cover',
+                       'total_gain', 'total_cover', 'shap')
     if self.trained == False:
-      raise Exception('Please train the models using the train_models method before calculating feature importances')
+      raise Exception('Please train the models using train_models method before calculating feature importances')
     
     if importance_type == 'shap':
       for i in self.output:
@@ -525,6 +618,7 @@ class XGB_Higgs():
           fig = plt.figure()
           fig.suptitle(i + ' - Feature Importance - ' + importance_type)
           shap.summary_plot(importance, self.x_train.values)
+          plt.savefig('XGBoost_FeatureImportance.png')
     else:
       for i in self.output:
         importance = self.output[i]['model'].get_score(importance_type = importance_type)
@@ -532,6 +626,7 @@ class XGB_Higgs():
         self.output[i]['feature_importance'] = importance
         xgb.plot_importance(importance, importance_type = importance_type)
         plt.title(i + ' - Feature Importance - ' + importance_type)
+        plt.savefig('XGBoost_feature_importance.png')
       
 
   def confusion_matrix(self):
@@ -547,6 +642,7 @@ class XGB_Higgs():
       plt.figure()
       plt.title(i + ' - Confusion Matrix')
       sns.heatmap(cm, annot = True, fmt = 'd')
+      plt.savefig('XGBoost_confusion_matrix.png')
 
   def classification_report(self):
     """
@@ -559,6 +655,7 @@ class XGB_Higgs():
     for i in self.output:
       print(i)
       print(sklearn.metrics.classification_report(self.y_test, np.round(self.output[i]['prediction'])))
+      plt.savefig('XGBoost_classification_report.png')
 
   def roc_curve(self):
 
@@ -585,6 +682,7 @@ class XGB_Higgs():
       plt.title(i + ' - ROC curve')
       plt.legend(loc="lower right")
       plt.show()
+      plt.savefig('XGBoost_roc_curve.png')
 
   def pr_curve(self):
 
@@ -603,4 +701,4 @@ class XGB_Higgs():
       plt.plot(recall, precision)
       plt.xlabel('Recall')
       plt.ylabel('Precision')
-      
+      plt.savefig('XGBoost_pr_curve.png')
