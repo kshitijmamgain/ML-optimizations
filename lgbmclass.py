@@ -17,7 +17,7 @@ import matplotlib.pyplot as plt
 
 
 # defining constant
-MAX_EVALS = 100
+MAX_EVALS = 3
 N_FOLDS = 3
 NUM_BOOST_ROUNDS = 10000
 EARLY_STOPPING_ROUNDS = 100
@@ -25,6 +25,7 @@ SEED = 47
 RESULT_PATH = '/home/jupyter/kshitij/higgs-feature-engg/content/lgbm.csv'
 FILE_PATH = "/home/jupyter/train_test_files/sample.csv"
 OBJECTIVE_LOSS = 'binary' # use cross_entropy
+EVAL_METRIC = ['auc', 'binary', 'xentropy']
 # "drive/My Drive/Colab Notebooks/train_test_files_sample.csv"  for google colab
 
 # starting with storing the data as data frame
@@ -32,15 +33,15 @@ df = pd.read_csv(FILE_PATH)
 df.drop(columns='Unnamed: 0', inplace=True)
 
 # making a smaller df for quick testing
-df_s, _ = train_test_split(df, random_state=30, train_size=0.01)
-train_X = df.drop(columns='0')
-train_y = df['0']
+df_s, _ = train_test_split(df, random_state=30, train_size=0.1)
+train_X = df_s.drop(columns='0')
+train_y = df_s['0']
 
 # drop last columns
 def col_keep(df):
     '''Removes the last 7 columns'''
     return df.drop(columns=list(map(str, range(22, 29))), inplace=True) # removing 7 last columns
-
+col_keep(train_X)
 
 # random search
 PARAM_GRID = {
@@ -100,20 +101,26 @@ class Lgbmclass():
         self.out_file = RESULT_PATH
         with open(self.out_file, 'w', newline='') as of_connection:
             writer = csv.writer(of_connection)
-
-        # Write the headers to the file
-        writer.writerow(['loss', 'params', 'iteration', 'estimators', 'train_time','optim_type'])
-        of_connection.close()
+            # Write the headers to the file
+            writer.writerow(['loss', 'params', 'iteration', 'estimators', 'train_time','optim_type'])
 
         self.x_train = x_train
         self.y_train = y_train
         self.train_set = lgb.Dataset(data=train_X, label=train_y)
 
     def parameter_tuning(self, tune_type, diagnostic=False):
+        '''
+        '''
+        methodlist = ['hypeopt_space','optuna_space','random_space']
+        optim_type = 'random_space'
+        if optim_type not in methodlist:
+            raise TypeError('Otimization type must have a valid space:',
+                            '\n\t\t hyperopt_space, optuna_space or random_space')
         tuner = getattr(self, tune_type)
         if diagnostic:
             return(tuner())
         else:
+            tuner()
             return self.params
 
     def lgb_crossval(self, params, optim_type):
@@ -131,11 +138,11 @@ class Lgbmclass():
         if optim_type == 'optuna':
             cv_results = lgbo.cv(params, self.train_set, num_boost_round=NUM_BOOST_ROUNDS,
                                  nfold=N_FOLDS, early_stopping_rounds=EARLY_STOPPING_ROUNDS,
-                                 metrics=['auc', 'binary', 'xentropy'], seed=SEED)
+                                 metrics=EVAL_METRIC, seed=SEED)
         else:
             cv_results = lgb.cv(params, self.train_set, num_boost_round=NUM_BOOST_ROUNDS,
                                 nfold=N_FOLDS, early_stopping_rounds=EARLY_STOPPING_ROUNDS,
-                                metrics=['auc', 'binary', 'xentropy'], seed=SEED)
+                                metrics=EVAL_METRIC, seed=SEED)
         # store the runtime
         run_time = timer() - start
 
@@ -157,7 +164,7 @@ class Lgbmclass():
         return loss, params, n_estimators, run_time
 
     def hyperopt_space(self):
-        '''A method to call the hyperopt optimization for the data
+        '''An Lgbm class method to call the hyperopt optimization for the data
         Parameters
         ----------
         fn_name: is the objective function to minimize defined with in the class function
@@ -168,6 +175,7 @@ class Lgbmclass():
         -------
         result: best parameter that minimizes the fn_name over max_evals = MAX_EVALS FIXED FOR TESTING
         trials: the database in which to store all the point evaluations of the search'''
+        print('Running {} rounds of LGBM parameter optimisation using Hyperopt:'.format(MAX_EVALS))
         fn_name, space, algo, trials='hyperopt_obj', H_SPACE, tpe.suggest, Trials()
         fn = getattr(self, fn_name)
         try:
@@ -180,7 +188,18 @@ class Lgbmclass():
         return result, trials
 
     def optuna_space(self):
-        '''Optuna search space'''
+        '''An Optuna class method to call the Optuna optimization for the data
+        Parameters
+        ----------
+        fn_name: is the optuna objective function to minimize defined with in the class function
+        direction: to indicate if the objective function is a loss to be minimized or gain to be maximized
+        n_trials: Optuna evaluation roundd
+        Returns
+        -------
+        study: Optuna study object
+        '''
+        
+        print('Running {} rounds of LGBM parameter optimisation using Optuna:'.format(MAX_EVALS))
         fn_name = 'optuna_obj'
         fn = getattr(self, fn_name)
         try:
@@ -194,6 +213,7 @@ class Lgbmclass():
 
     def random_space(self):
         '''Random search space'''
+        print('Running {} rounds of LGBM parameter optimisation using Random Search:'.format(MAX_EVALS))
         # Dataframe to hold cv results
         space = PARAM_GRID
         random_results = pd.DataFrame(columns=['loss', 'params', 'iteration', 'estimators',
@@ -243,7 +263,7 @@ class Lgbmclass():
         '''Defining the parameters space inside the function for optuna optimization'''
         params = {
             'num_leaves': trial.suggest_int('num_leaves', 16, 196, 4),
-            'max_bin' : trial.suggest_int('max_bin', 63, 255, 64),
+            'max_bin' : trial.suggest_int('max_bin', 254, 255, 1),
             'lambda_l1': trial.suggest_loguniform('lambda_l1', 1e-8, 10.0),
             'lambda_l2': trial.suggest_loguniform("lambda_l2", 1e-8, 10.0),
             'min_data_in_leaf' : trial.suggest_int('min_data_in_leaf', 20, 500),
@@ -410,5 +430,4 @@ class Lgbmclass():
 obj = Lgbmclass(train_X, train_y)
 obj.parameter_tuning('optuna_space')
 obj.train(train_X, train_y)
-obj.evaluate
-
+obj.evaluate()
