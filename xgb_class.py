@@ -185,19 +185,23 @@ class XGBoostModel():
                     'skip_drop': hp.uniform('skip_drop', 0, 1)}]
 
         max_bin = hp.choice('max_bin', [2**7, 2**8, 2**9, 2**10])
-        tree_method = [{'tree_method': 'auto'},
-                       {'tree_method': 'exact'},
-                       {'tree_method': 'hist',
-                        'max_bin': max_bin},
-                       {'tree_method': 'approx',
-                        'sketch_eps': hp.quniform('sketch_eps', 0, 1, 0.05)}]
         if self.GPU is True:
-          tree_method.append({'tree_method': 'gpu_hist',
-                              'single_precision_histogram': hp.choice(
+          tree_method = [{'tree_method': 'gpu_hist',
+                          'single_precision_histogram': hp.choice(
                                   'single_precision_histogram', [True, False]),
-                              'deterministic_histogram': hp.choice(
+                          'deterministic_histogram': hp.choice(
                                   'deterministic_histogram', [True, False]),
-                              'max_bin': max_bin})
+                          'max_bin': max_bin}]
+          subsample = hp.quniform('subsample', 0.1, 1, 0.05)
+
+        else:
+          tree_method = [{'tree_method': 'auto'},
+                         {'tree_method': 'exact'},
+                         {'tree_method': 'hist',
+                          'max_bin': max_bin},
+                         {'tree_method': 'approx',
+                          'sketch_eps': hp.quniform('sketch_eps', 0, 1, 0.05)}]
+          subsample = hp.quniform('subsample', 0.5, 1, 0.05)
 
         params = {
                   'objective': 'binary:logistic',
@@ -213,7 +217,7 @@ class XGBoostModel():
                   'eta': hp.quniform('eta', 0.025, 0.5, 0.025),
                   'gamma': hp.quniform('gamma', 0.5, 1.0, 0.05),
                   'grow_policy': hp.choice('grow_policy', grow_policy),
-                  'subsample': hp.quniform('subsample', 0, 1, 0.05),
+                  'subsample': subsample,
                   'sampling_method': 'uniform',
                   'min_child_weight': hp.quniform('min_child_weight',
                                                   1, 10, 1),
@@ -290,6 +294,7 @@ class XGBoostModel():
         space['grow_policy'] = space['grow_policy']['grow_policy']
         space['booster'] = space['booster']['booster']
         space['tree_method'] = space['tree_method']['tree_method']
+        #space['subsample'] = space['subsample']['subsample']
 
         print('Training with params: ')
         print(space)
@@ -360,7 +365,7 @@ class XGBoostModel():
           current set of hyperparameters for the trial
         """
         if self.GPU is True:
-          tree_method_list = ['auto', 'exact', 'approx', 'hist', 'gpu_hist']
+          tree_method_list = ['gpu_hist']
         else:
           tree_method_list = ['auto', 'exact', 'approx', 'hist']
 
@@ -483,7 +488,7 @@ class XGBoostModel():
         """
 
         if self.GPU is True:
-          tree_method_list = ['auto', 'exact', 'approx', 'hist', 'gpu_hist']
+          tree_method_list = ['gpu_hist']
         else:
           tree_method_list = ['auto', 'exact', 'approx', 'hist']
 
