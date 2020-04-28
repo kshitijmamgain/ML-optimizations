@@ -294,7 +294,6 @@ class XGBoostModel():
         space['grow_policy'] = space['grow_policy']['grow_policy']
         space['booster'] = space['booster']['booster']
         space['tree_method'] = space['tree_method']['tree_method']
-        #space['subsample'] = space['subsample']['subsample']
 
         print('Training with params: ')
         print(space)
@@ -366,8 +365,12 @@ class XGBoostModel():
         """
         if self.GPU is True:
           tree_method_list = ['gpu_hist']
+          sampling_method = ['gradient_based']
+          predictor = ['gpu_predictor']
         else:
           tree_method_list = ['auto', 'exact', 'approx', 'hist']
+          sampling_method = ['uniform']
+          predictor = ['cpu_predictor']
 
         space = {
             'objective': 'binary:logistic',
@@ -395,8 +398,10 @@ class XGBoostModel():
             'tree_method': trial.suggest_categorical('tree_method',
                                                      tree_method_list),
             'scale_pos_weight': self.ratio,
-            'sampling_method': 'uniform',
-            'predictor': 'cpu_predictor'
+            'sampling_method': trial.suggest_categorical('sampling_method',
+                                                     sampling_method),
+            'predictor': trial.suggest_categorical('predictor',
+                                                     predictor)
                   }
 
         if space['grow_policy'] == 'lossguide':
@@ -424,9 +429,7 @@ class XGBoostModel():
                                     'deterministic_histogram', [True, False])
             space['max_bin'] = trial.suggest_categorical('max_bin',
                                                      [2**7, 2**8, 2**9, 2**10])
-            space['sampling_method'] = 'gradient_based'
             space['subsample'] = trial.suggest_uniform('subsample', 0.1, 1)
-            space['predictor'] = 'gpu_predictor'
 
         results = self.cross_validation(space)
 
@@ -436,7 +439,7 @@ class XGBoostModel():
         return results['loss']
 
       if not os.path.exists('XGBoost_trials'):
-        os.makedirs('XGBoostT_trials')
+        os.makedirs('XGBoost_trials')
       self.optuna_trials.to_csv('XGBoost_trials/optuna_trials.csv')
 
       study = optuna.create_study(direction='minimize',
