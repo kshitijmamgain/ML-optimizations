@@ -2,6 +2,11 @@
 # Draft Codes
 # coding: utf-8
 ''' This class tunes hyperparamter for LightGBM ML algorithm for Higgs dataset'''
+
+# Draft Codes
+# coding: utf-8
+''' This class tunes hyperparamter for LightGBM ML algorithm for Higgs dataset'''
+import ast 
 import csv
 from timeit import default_timer as timer
 import random
@@ -22,11 +27,11 @@ N_FOLDS = 3
 NUM_BOOST_ROUNDS = 10000
 EARLY_STOPPING_ROUNDS = 100
 SEED = 47
-RESULT_PATH = '/home/jupyter/kshitij/higgs-feature-engg/content/lgbm.csv'
-FILE_PATH = "/home/jupyter/train_test_files/sample.csv"
+RESULT_PATH = 'lgbm.csv'
+FILE_PATH = "drive/My Drive/Colab Notebooks/train_test_files_sample.csv"
 OBJECTIVE_LOSS = 'binary' # use cross_entropy
 EVAL_METRIC = ['auc', 'binary', 'xentropy']
-# "drive/My Drive/Colab Notebooks/train_test_files_sample.csv"  for google colab
+#   for google colab
 
 # starting with storing the data as data frame
 df = pd.read_csv(FILE_PATH)
@@ -187,53 +192,6 @@ class Lgbmclass():
         self.params['n_estimator'] = self.estimator
         return result, trials
 
-    def optuna_space(self):
-        '''An Optuna class method to call the Optuna optimization for the data
-        Parameters
-        ----------
-        fn_name: is the optuna objective function to minimize defined with in the class function
-        direction: to indicate if the objective function is a loss to be minimized or gain to be maximized
-        n_trials: Optuna evaluation roundd
-        Returns
-        -------
-        study: Optuna study object
-        '''
-        
-        print('Running {} rounds of LGBM parameter optimisation using Optuna:'.format(MAX_EVALS))
-        fn_name = 'optuna_obj'
-        fn = getattr(self, fn_name)
-        try:
-            study = optuna.create_study(direction='minimize', sampler=optuna.samplers.TPESampler(seed=SEED))
-            study.optimize(fn, n_trials=MAX_EVALS)
-        except Exception as e:
-            return {'exception': str(e)}
-        self.params = study.best_params
-        self.params['n_estimator'] = self.estimator
-        return study
-
-    def random_space(self):
-        '''Random search space'''
-        print('Running {} rounds of LGBM parameter optimisation using Random Search:'.format(MAX_EVALS))
-        # Dataframe to hold cv results
-        space = PARAM_GRID
-        random_results = pd.DataFrame(columns=['loss', 'params', 'iteration', 'estimators',
-                                               'time'], index=list(range(MAX_EVALS)))
-
-        # Iterate through the specified number of evaluations
-        for i in range(MAX_EVALS):
-
-            # Randomly sample parameters for gbm
-            params = {key: random.sample(value, 1)[0] for key, value in space.items()}
-            results_list = self.randomsrch_obj(params, i)
-
-            # Add results to next row in dataframe
-            random_results.loc[i, :] = results_list
-        #sort values by the loss
-        random_results.sort_values('loss', ascending = True, inplace = True)
-        self.params = random_results.loc[0, 'params']
-        self.params['n_estimator'] = self.estimator
-        return random_results
-
     def hyperopt_obj(self, params):
         """Objective function for Gradient Boosting Machine Hyperparameter Optimization"""
 
@@ -258,6 +216,30 @@ class Lgbmclass():
         # Dictionary with information for evaluation
         return {'loss':loss, 'params':params, 'iteration':self.iteration,
                 'estimators':n_estimators, 'train_time':run_time, 'status':STATUS_OK}
+                
+    def optuna_space(self):
+        '''An Optuna class method to call the Optuna optimization for the data
+        Parameters
+        ----------
+        fn_name: is the optuna objective function to minimize defined with in the class function
+        direction: to indicate if the objective function is a loss to be minimized or gain to be maximized
+        n_trials: Optuna evaluation roundd
+        Returns
+        -------
+        study: Optuna study object
+        '''
+        
+        print('Running {} rounds of LGBM parameter optimisation using Optuna:'.format(MAX_EVALS))
+        fn_name = 'optuna_obj'
+        fn = getattr(self, fn_name)
+        try:
+            study = optuna.create_study(direction='minimize', sampler=optuna.samplers.TPESampler(seed=SEED))
+            study.optimize(fn, n_trials=MAX_EVALS)
+        except Exception as e:
+            return {'exception': str(e)}
+        self.params = study.best_params
+        self.params['n_estimator'] = self.estimator
+        return study
 
     def optuna_obj(self, trial):
         '''Defining the parameters space inside the function for optuna optimization'''
@@ -295,6 +277,29 @@ class Lgbmclass():
 
         return loss
 
+    def random_space(self):
+        '''Random search space'''
+        print('Running {} rounds of LGBM parameter optimisation using Random Search:'.format(MAX_EVALS))
+        # Dataframe to hold cv results
+        space = PARAM_GRID
+        random_results = pd.DataFrame(columns=['loss', 'params', 'iteration', 'estimators',
+                                               'time'], index=list(range(MAX_EVALS)))
+
+        # Iterate through the specified number of evaluations
+        for i in range(MAX_EVALS):
+
+            # Randomly sample parameters for gbm
+            params = {key: random.sample(value, 1)[0] for key, value in space.items()}
+            results_list = self.randomsrch_obj(params, i)
+
+            # Add results to next row in dataframe
+            random_results.loc[i, :] = results_list
+        #sort values by the loss
+        random_results.sort_values('loss', ascending = True, inplace = True)
+        self.params = random_results.loc[0, 'params']
+        self.params['n_estimator'] = self.estimator
+        return random_results
+
     def randomsrch_obj(self, params, iteration):
         """Random search objective function. Takes in hyperparameters and returns a list
         of results to be saved."""
@@ -323,14 +328,20 @@ class Lgbmclass():
         ----------
         x_test: test set; y_test: test label"""
         self.test_x, self.test_y = x_test, y_test
+        param_df = pd.read_csv(RESULT_PATH)
+        param_df.sort_values('loss', ascending = True, inplace = True)
+
+        best = ast.literal_eval(param_df.loc[0, 'params'])
+        best['n_estimator'] = int(param_df.loc[0, 'estimators'])
+        optim_type = param_df.loc[0, 'optim_type']
         for parameter_name in ['num_leaves', 'subsample_for_bin', 'min_data_in_leaf',
                                'max_bin', 'bagging_freq']:
-            self.params[parameter_name] = int(self.params[parameter_name])
-        self.gbm = lgb.train(self.params, self.train_set,
+            best[parameter_name] = int(best[parameter_name])
+        self.gbm = lgb.train(best, self.train_set,
                              feature_name=['f' + str(i + 1) for i in range(train_X.shape[-1])])
         self.pred = self.gbm.predict(x_test)
-        print("Model will be trained with best parameters obtained from Hyperopt ... \n\n\n")
-        print("Model trained with {} estimators on the following parameters: \n{}".format(self.estimator, self.params))
+        print("Model will be trained with best parameters obtained from {} ... \n\n\n".format(optim_type))
+        print("Model trained on the following parameters: \n{}".format(best))
 
     def evaluate(self):
         """This function generates the evaluation report for the model"""
