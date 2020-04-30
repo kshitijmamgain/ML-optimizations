@@ -56,6 +56,10 @@ class XGBoostModel():
         Enable GPU usage and include GPU specific-parameters to parameter search space
 
       """
+      if not isinstance(train, pd.DataFrame):
+        raise TypeError('Input training set must be a dataframe')
+      if not isinstance(test, pd.DataFrame):
+        raise TypeError('Input testing set must be a dataframe')
       if type(target_feature) not in [str, int]:
         raise TypeError('Target Feature must be a string column name or integer column index')
       if not isinstance(max_evals, int):
@@ -77,12 +81,8 @@ class XGBoostModel():
       self.early_stopping_rounds = early_stopping_rounds
       self.target_feature = target_feature
       self.train, self.test = train, test
-      self.best_hyperopt_params = None
-      self.optuna_params = None
-      self.random_search_params = None
-      self.best_hyperopt_model = None
-      self.best_optuna_model = None
-      self.best_random_search_model = None
+      self.best_params = None
+      self.best_model = None
       self.output = None
       self.dtrain, self.dtest = None, None
       self.y_test = None
@@ -99,13 +99,19 @@ class XGBoostModel():
 
       """
       if type(self.target_feature) == int:
-        self.dtrain = xgb.DMatrix(self.train.drop(columns=self.train.columns[self.target_feature]), label=self.train.iloc[:, self.target_feature])
-        self.dtest = xgb.DMatrix(self.test.drop(columns=self.train.columns[self.target_feature]), label=self.test.iloc[:, self.target_feature])
+        self.x_train = self.train.drop(columns=self.train.columns[self.target_feature])
+        self.y_train = self.train.iloc[:, self.target_feature]
+        self.x_test = self.test.drop(columns=self.train.columns[self.target_feature])
+        self.y_test = self.test.iloc[:, self.target_feature]
+        self.dtrain = xgb.DMatrix(self.x_train, label=self.y_train)
+        self.dtest = xgb.DMatrix(self.x_test, label=self.y_test)
       else:
-        self.dtrain = xgb.DMatrix(self.train.drop(columns=self.target_feature), label = self.train.loc[:, self.target_feature])
-        self.dtest = xgb.DMatrix(self.test.drop(columns=self.target_feature), label = self.test.loc[:, self.target_feature])
-
-      self.y_test = self.dtest.get_label()
+        self.x_train = self.train.drop(columns=self.target_feature)
+        self.y_train = self.train.loc[:, self.target_feature]
+        self.x_test = self.test.drop(columns=self.target_feature)
+        self.y_test= self.test.loc[:, self.target_feature]
+        self.dtrain = xgb.DMatrix(self.x_train, label=self.y_train)
+        self.dtest = xgb.DMatrix(self.x_test, label=self.y_test)
 
       label = self.dtrain.get_label()
       self.ratio = float(np.sum(label == 0)) / np.sum(label == 1)
@@ -168,7 +174,7 @@ class XGBoostModel():
         value of the loss function using the HyperOpt optimization algorithm.
       """
       print('Starting HyperOpt hyperparameter tuning...')
-      self.hyperopt_trials = pd.DataFrame(columns=['params', 'loss',
+      self.trials = pd.DataFrame(columns=['params', 'loss',
                                                    'variance', 'n_estimators',
                                                    'time'])
 
@@ -205,7 +211,7 @@ class XGBoostModel():
                           'deterministic_histogram': hp.choice(
                                   'deterministic_histogram', [True, False]),
                           'max_bin': max_bin}]
-          subsample = hp.quniform('subsample', 0.1, 1, 0.05)
+          subsample = hp.uniform('subsample', 0.1, 1)
 
         else:
           tree_method = [{'tree_method': 'auto'},
@@ -214,7 +220,7 @@ class XGBoostModel():
                           'max_bin': max_bin},
                          {'tree_method': 'approx',
                           'sketch_eps': hp.quniform('sketch_eps', 0, 1, 0.05)}]
-          subsample = hp.quniform('subsample', 0.5, 1, 0.05)
+          subsample = hp.uniform('subsample', 0.5, 1)
 
         params = {
                   'objective': 'binary:logistic',
@@ -313,8 +319,7 @@ class XGBoostModel():
 
         results = self.cross_validation(space)
 
-        self.hyperopt_trials = self.hyperopt_trials.append(results,
-                                                           ignore_index=True)
+        self.trials = self.trials.append(results, ignore_index=True)
 
         result_dict = {'loss': results['loss'],
                        'status': STATUS_OK,
@@ -332,12 +337,12 @@ class XGBoostModel():
 
       if not os.path.exists('XGBoost_trials'):
         os.makedirs('XGBoost_trials')
-      self.hyperopt_trials.to_csv('XGBoost_trials/hyperopt_trials.csv')
+      self.trials.to_csv('XGBoost_trials/hyperopt_trials.csv')
 
-      best = self.hyperopt_trials[['params', 'loss']].sort_values(
+      best = self.trials[['params', 'loss']].sort_values(
                                     by='loss', ascending=True).loc[0].to_dict()
       best = best['params']
-      self.best_hyperopt_params = best
+      self.best_params = best
       print('The best HyperOpt hyperparameters are: ')
       print(best)
       print('\n')
@@ -356,7 +361,7 @@ class XGBoostModel():
         value of the loss function using the Optuna optimization algorithm.
       """
       print('Starting Optuna hyperparameter tuning...')
-      self.optuna_trials = pd.DataFrame(columns=['params', 'loss', 'variance',
+      self.trials = pd.DataFrame(columns=['params', 'loss', 'variance',
                                                  'n_estimators', 'time'])
 
       def optuna_objective(trial):
@@ -380,10 +385,13 @@ class XGBoostModel():
           tree_method_list = ['gpu_hist']
           sampling_method = ['gradient_based']
           predictor = ['gpu_predictor']
+          subsample = trial.suggest_uniform('subsample', 0.1, 1)
+        
         else:
           tree_method_list = ['auto', 'exact', 'approx', 'hist']
           sampling_method = ['uniform']
           predictor = ['cpu_predictor']
+          subsample = trial.suggest_uniform('subsample', 0.5, 1)
 
         space = {
             'objective': 'binary:logistic',
@@ -397,7 +405,7 @@ class XGBoostModel():
             'max_depth': trial.suggest_int('max_depth', 1, 14),
             'eta': trial.suggest_uniform('eta', 0.025, 0.5),
             'gamma': trial.suggest_uniform('gamma', 0.5, 1.0),
-            'subsample': trial.suggest_uniform('subsample', 0.5, 1),
+            'subsample': subsample,
             'grow_policy': trial.suggest_categorical('grow_policy',
                                                    ['depthwise', 'lossguide']),
             'min_child_weight': trial.suggest_uniform('min_child_weight',
@@ -442,28 +450,26 @@ class XGBoostModel():
                                     'deterministic_histogram', [True, False])
             space['max_bin'] = trial.suggest_categorical('max_bin',
                                                      [2**7, 2**8, 2**9, 2**10])
-            space['subsample'] = trial.suggest_uniform('subsample', 0.1, 1)
 
         results = self.cross_validation(space)
 
-        self.optuna_trials = self.optuna_trials.append(results,
-                                                       ignore_index=True)
+        self.trials = self.trials.append(results, ignore_index=True)
 
         return results['loss']
 
       if not os.path.exists('XGBoost_trials'):
         os.makedirs('XGBoost_trials')
-      self.optuna_trials.to_csv('XGBoost_trials/optuna_trials.csv')
+      self.trials.to_csv('XGBoost_trials/optuna_trials.csv')
 
       study = optuna.create_study(direction='minimize',
                                   sampler=optuna.samplers.TPESampler(
                                       seed=self.seed))
       optimize = study.optimize(optuna_objective, n_trials=self.max_evals)
 
-      best = self.optuna_trials[['params', 'loss']].sort_values(
+      best = self.trials[['params', 'loss']].sort_values(
                                     by='loss', ascending=True).loc[0].to_dict()
       best = best['params']
-      self.best_optuna_params = best
+      self.best_params = best
 
       print('The best Optuna hyperparameters are: ')
       print(best)
@@ -485,11 +491,11 @@ class XGBoostModel():
       """
       random.seed(self.seed)
       print('Starting Random Search hyperparameter tuning...')
-      self.random_search_trials = pd.DataFrame(columns=['params',
-                                                        'loss',
-                                                        'variance',
-                                                        'n_estimators',
-                                                        'time'])
+      self.trials = pd.DataFrame(columns=['params',
+                                          'loss',
+                                          'variance',
+                                          'n_estimators',
+                                          'time'])
 
       def random_params():
 
@@ -503,7 +509,7 @@ class XGBoostModel():
           optimization algorithm
         """
 
-        if self.GPU is True:
+        if self.GPU:
           tree_method_list = ['gpu_hist']
         else:
           tree_method_list = ['auto', 'exact', 'approx', 'hist']
@@ -557,8 +563,7 @@ class XGBoostModel():
 
         results = self.cross_validation(space)
 
-        self.random_search_trials = self.random_search_trials.append(
-                                                    results, ignore_index=True)
+        self.trials = self.trials.append(results, ignore_index=True)
 
       for i in range(self.max_evals):
         param = {}
@@ -595,83 +600,74 @@ class XGBoostModel():
 
       if not os.path.exists('XGBoost_trials'):
         os.makedirs('XGBoost_trials')
-      self.random_search_trials.to_csv(
-                                     'XGBoost_trials/random_search_trials.csv')
+      self.trials.to_csv('XGBoost_trials/random_search_trials.csv')
 
-      best = self.random_search_trials[['params', 'loss']].sort_values(
+      best = self.trials[['params', 'loss']].sort_values(
                                     by='loss', ascending=True).loc[0].to_dict()
-      self.best_random_search_params = best['params']
+      self.best_params = best['params']
       print('The best Random Search hyperparameters are: ')
       print(best)
       print('\n')
       return best
 
-    def train_models(self, hyperopt=True, optuna=True, random_search=True):
+    def train_model(self, optim_type):
       """
       Train the three best models obtained by the HyperOpt, Optuna and Random
       Search optimization algorithms
 
       Parameters
       ----------
-      hyperopt: bool, default = True
-        Whether to implement HyperOpt algorithm or not
-      optuna: bool, default = True
-        Whether to implement Optuna algorithm or not
-      random_search = True
-        Whether to implement the Random Search algorithm or not
+      optim_type: string
+        The optimizer type to use. Choice can be hyperopt, optuna, or random_search
       """
-      random.seed(self.seed)
+
+      if optim_type not in ['hyperopt', 'optuna', 'random_search']:
+        raise ValueError('Optimizer type {} not supported'.format(optim_type))
+
       print('Starting training...')
       self.prepare_data()
       self.output = {}
+      self.optim_type = optim_type
 
-      if hyperopt:
+      if self.optim_type == 'hyperopt':
         self.hyperopt_tuning()
-        self.output['hyperopt'] = {}
-        self.output['hyperopt']['params'] = self.best_hyperopt_params
-        self.output['hyperopt']['model'] = self.best_hyperopt_model
-      if optuna:
+      elif self.optim_type == 'optuna':
         self.optuna_tuning()
-        self.output['optuna'] = {}
-        self.output['optuna']['params'] = self.best_optuna_params
-        self.output['optuna']['model'] = self.best_optuna_model
-      if random_search:
+      elif self.optim_type == 'random_search':
+        random.seed(self.seed)
         self.random_search_tuning()
-        self.output['random_search'] = {}
-        self.output['random_search']['params'] = self.best_random_search_params
-        self.output['random_search']['model'] = self.best_random_search_model
 
-      for i in self.output:
-        model = xgb.train(self.output[i]['params'], self.dtrain)
-        pickle.dump(model, open('XGBoost_' + i + "_model.dat", "wb"))
-        self.output[i]['model'] = model
+      self.output[self.optim_type] = {}
+      self.output[self.optim_type]['params'] = self.best_params
+
+      self.best_model = xgb.train(self.best_params, self.dtrain)
+      pickle.dump(self.best_model, open('XGBoost_' + self.optim_type + "_model.dat", "wb"))
+      
 
       self.trained = True
 
-    def test_models(self):
+    def test_model(self):
       """
       Evaluate the three best models obtained by the HyperOpt, Optuna and
       Random Search optimization algorithms on the testing set
       """
-      if self.trained is False:
-        raise Exception('Please train the models using the train_models' +
+      if not self.trained:
+        raise Exception('Please train the models using the train_model' +
                                                        'method before testing')
 
-      for i in self.output:
-        prediction = self.output[i]['model'].predict(
-                                 self.dtest, ntree_limit=self.num_boost_rounds)
-        prediction = np.float64(prediction)
-        self.output[i]['prediction'] = prediction
-        score = log_loss(self.y_test, prediction)
-        self.output[i]['score'] = score
-
+    
+      self.prediction = self.best_model.predict(self.dtest, 
+                                          ntree_limit=self.num_boost_rounds)
+      self.prediction = np.float64(self.prediction)
+      score = log_loss(self.y_test, self.prediction)
+      self.output[self.optim_type]['score'] = score
+ 
       self.tested = True
       print('Testing Results: ')
       print(self.output)
       print('\n')
 
-      pd.DataFrame(self.output).T[['params', 'score']].to_csv(
-                                                         'XGBoost_Summary.csv')
+      pd.DataFrame(self.output).to_csv('XGBoost_Summary.csv')
 
     def feature_importance(self, importance_type='gain'):
 
@@ -688,31 +684,25 @@ class XGBoostModel():
                                  'total_gain', 'total_cover', 'shap']:
         raise ValueError('Importance Type not supported.Must be among:\'gain',
                         'weight', 'cover', 'total_gain', 'total_cover', 'shap')
-      if self.trained is False:
+      if not self.trained:
         raise Exception('Please train the models using train_models method' +
                                       'before calculating feature importances')
 
       if importance_type == 'shap':
-        for i in self.output:
-          if self.output[i]['params']['booster'] == 'gbtree':
-            explainer = shap.TreeExplainer(self.output[i]['model'])
-            importance = explainer.shap_values(self.x_train.values)
-            if not os.path.exists('XGBoost_Plots'):
-              os.makedirs('XGBoost_Plots')
-            fig = plt.figure()
-            fig.suptitle(i + ' - Feature Importance - ' + importance_type)
-            shap.summary_plot(importance, self.x_train.values)
-            plt.savefig('XGBoost_Plots/XGBoost_' + i +'_FeatureImportance.png')
+        if self.best_params['booster'] == 'gbtree':
+          explainer = shap.TreeExplainer(self.best_model)
+          importance = explainer.shap_values(self.x_train)
+          fig = plt.figure()
+          fig.suptitle(self.optim_type + ' - Feature Importance - ' + importance_type)
+          shap.summary_plot(importance, self.x_train)
+        else:
+          print('Importance type SHAP only valid for gbtree type booster')
       else:
-        for i in self.output:
-          importance = self.output[i]['model'].get_score(
-                                               importance_type=importance_type)
-          importance = {key: np.round(value, 2)
-                        for key, value in importance.items()}
-          self.output[i]['feature_importance'] = importance
-          xgb.plot_importance(importance, importance_type=importance_type)
-          plt.title(i + ' - Feature Importance - ' + importance_type)
-
-          if not os.path.exists('XGBoost_Plots'):
-            os.makedirs('XGBoost_Plots')
-          plt.savefig('XGBoost_Plots/XGBoost_' + i + '_FeatureImportance.png')
+        importance = self.best_model.get_score(importance_type=importance_type)
+        importance = {key: np.round(value, 2)
+                      for key, value in importance.items()}
+        xgb.plot_importance(importance, importance_type=importance_type)
+        plt.title(self.optim_type + ' - Feature Importance - ' + importance_type)
+      if not os.path.exists('XGBoost_Plots'):
+        os.makedirs('XGBoost_Plots')
+      plt.savefig('XGBoost_Plots/XGBoost_' + self.optim_type + '_FeatureImportance.png')
