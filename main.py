@@ -108,7 +108,7 @@ def main():
     xgb_model = XGBoostModel(train=train_data, test=test_data, target_feature=0, max_evals = 10,
                             n_fold=5, num_boost_rounds=100, early_stopping_rounds=10,
                             seed=42, GPU=False)
-    xgb_model.train_models(hyperopt=True, optuna=True, random_search=True)
+    xgb_model.train_models(optim_type='hyperopt')
 
     ##### KShitij   #### LightGBM 
 
