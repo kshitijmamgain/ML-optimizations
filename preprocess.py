@@ -161,10 +161,10 @@ class Preprocessor():
         missing = df.isnull().sum()
         if missing.any().compute():
             print("Missing values detected")
-            if method == 'drop':
+            if self.missing_method == 'drop':
                 df = df.dropna()
                 
-            elif method == 'fill':
+            elif self.missing_method == 'fill':
                 if self.drop_threshold!=None:
                     percent_missing = ((missing/df.index.size)*100).compute()
                     drop_list = list(percent_missing[percent_missing > self.drop_threshold].index)
