@@ -2,19 +2,23 @@
 # Draft Codes
 # coding: utf-8
 ''' This class tunes hyperparamter for LightGBM ML algorithm for Higgs dataset'''
+
+# Draft Codes
+# coding: utf-8
+''' This class tunes hyperparamter for LightGBM ML algorithm for Higgs dataset'''
+import ast 
 import csv
 from timeit import default_timer as timer
 import random
 import numpy as np
 import pandas as pd
 import lightgbm as lgb
-from sklearn.model_selection import train_test_split
+
 from sklearn.metrics import auc, accuracy_score, roc_auc_score, roc_curve, confusion_matrix, precision_recall_curve
 from hyperopt import STATUS_OK, STATUS_FAIL, hp, tpe, Trials, fmin
 import optuna.integration.lightgbm as lgbo
 import optuna
 import matplotlib.pyplot as plt
-
 
 # defining constant
 MAX_EVALS = 3
@@ -22,26 +26,10 @@ N_FOLDS = 3
 NUM_BOOST_ROUNDS = 10000
 EARLY_STOPPING_ROUNDS = 100
 SEED = 47
-RESULT_PATH = '/home/jupyter/kshitij/higgs-feature-engg/content/lgbm.csv'
-FILE_PATH = "/home/jupyter/train_test_files/sample.csv"
+
+RESULT_PATH = 'lgbm.csv'
 OBJECTIVE_LOSS = 'binary' # use cross_entropy
 EVAL_METRIC = ['auc', 'binary', 'xentropy']
-# "drive/My Drive/Colab Notebooks/train_test_files_sample.csv"  for google colab
-
-# starting with storing the data as data frame
-df = pd.read_csv(FILE_PATH)
-df.drop(columns='Unnamed: 0', inplace=True)
-
-# making a smaller df for quick testing
-df_s, _ = train_test_split(df, random_state=30, train_size=0.1)
-train_X = df_s.drop(columns='0')
-train_y = df_s['0']
-
-# drop last columns
-def col_keep(df):
-    '''Removes the last 7 columns'''
-    return df.drop(columns=list(map(str, range(22, 29))), inplace=True) # removing 7 last columns
-col_keep(train_X)
 
 # random search
 PARAM_GRID = {
@@ -106,7 +94,7 @@ class Lgbmclass():
 
         self.x_train = x_train
         self.y_train = y_train
-        self.train_set = lgb.Dataset(data=train_X, label=train_y)
+        self.train_set = lgb.Dataset(data=x_train, label=y_train)
 
     def parameter_tuning(self, tune_type, diagnostic=False):
         '''
@@ -187,53 +175,6 @@ class Lgbmclass():
         self.params['n_estimator'] = self.estimator
         return result, trials
 
-    def optuna_space(self):
-        '''An Optuna class method to call the Optuna optimization for the data
-        Parameters
-        ----------
-        fn_name: is the optuna objective function to minimize defined with in the class function
-        direction: to indicate if the objective function is a loss to be minimized or gain to be maximized
-        n_trials: Optuna evaluation roundd
-        Returns
-        -------
-        study: Optuna study object
-        '''
-        
-        print('Running {} rounds of LGBM parameter optimisation using Optuna:'.format(MAX_EVALS))
-        fn_name = 'optuna_obj'
-        fn = getattr(self, fn_name)
-        try:
-            study = optuna.create_study(direction='minimize', sampler=optuna.samplers.TPESampler(seed=SEED))
-            study.optimize(fn, n_trials=MAX_EVALS)
-        except Exception as e:
-            return {'exception': str(e)}
-        self.params = study.best_params
-        self.params['n_estimator'] = self.estimator
-        return study
-
-    def random_space(self):
-        '''Random search space'''
-        print('Running {} rounds of LGBM parameter optimisation using Random Search:'.format(MAX_EVALS))
-        # Dataframe to hold cv results
-        space = PARAM_GRID
-        random_results = pd.DataFrame(columns=['loss', 'params', 'iteration', 'estimators',
-                                               'time'], index=list(range(MAX_EVALS)))
-
-        # Iterate through the specified number of evaluations
-        for i in range(MAX_EVALS):
-
-            # Randomly sample parameters for gbm
-            params = {key: random.sample(value, 1)[0] for key, value in space.items()}
-            results_list = self.randomsrch_obj(params, i)
-
-            # Add results to next row in dataframe
-            random_results.loc[i, :] = results_list
-        #sort values by the loss
-        random_results.sort_values('loss', ascending = True, inplace = True)
-        self.params = random_results.loc[0, 'params']
-        self.params['n_estimator'] = self.estimator
-        return random_results
-
     def hyperopt_obj(self, params):
         """Objective function for Gradient Boosting Machine Hyperparameter Optimization"""
 
@@ -258,6 +199,30 @@ class Lgbmclass():
         # Dictionary with information for evaluation
         return {'loss':loss, 'params':params, 'iteration':self.iteration,
                 'estimators':n_estimators, 'train_time':run_time, 'status':STATUS_OK}
+                
+    def optuna_space(self):
+        '''An Optuna class method to call the Optuna optimization for the data
+        Parameters
+        ----------
+        fn_name: is the optuna objective function to minimize defined with in the class function
+        direction: to indicate if the objective function is a loss to be minimized or gain to be maximized
+        n_trials: Optuna evaluation roundd
+        Returns
+        -------
+        study: Optuna study object
+        '''
+        
+        print('Running {} rounds of LGBM parameter optimisation using Optuna:'.format(MAX_EVALS))
+        fn_name = 'optuna_obj'
+        fn = getattr(self, fn_name)
+        try:
+            study = optuna.create_study(direction='minimize', sampler=optuna.samplers.TPESampler(seed=SEED))
+            study.optimize(fn, n_trials=MAX_EVALS)
+        except Exception as e:
+            return {'exception': str(e)}
+        self.params = study.best_params
+        self.params['n_estimator'] = self.estimator
+        return study
 
     def optuna_obj(self, trial):
         '''Defining the parameters space inside the function for optuna optimization'''
@@ -295,6 +260,29 @@ class Lgbmclass():
 
         return loss
 
+    def random_space(self):
+        '''Random search space'''
+        print('Running {} rounds of LGBM parameter optimisation using Random Search:'.format(MAX_EVALS))
+        # Dataframe to hold cv results
+        space = PARAM_GRID
+        random_results = pd.DataFrame(columns=['loss', 'params', 'iteration', 'estimators',
+                                               'time'], index=list(range(MAX_EVALS)))
+
+        # Iterate through the specified number of evaluations
+        for i in range(MAX_EVALS):
+
+            # Randomly sample parameters for gbm
+            params = {key: random.sample(value, 1)[0] for key, value in space.items()}
+            results_list = self.randomsrch_obj(params, i)
+
+            # Add results to next row in dataframe
+            random_results.loc[i, :] = results_list
+        #sort values by the loss
+        random_results.sort_values('loss', ascending = True, inplace = True)
+        self.params = random_results.loc[0, 'params']
+        self.params['n_estimator'] = self.estimator
+        return random_results
+
     def randomsrch_obj(self, params, iteration):
         """Random search objective function. Takes in hyperparameters and returns a list
         of results to be saved."""
@@ -318,116 +306,31 @@ class Lgbmclass():
         return [loss, params, iteration, n_estimators, run_time]
 
     def train(self, x_test, y_test):
-        """This function evaluates the model on paramters and estimators
+        """This function trains the model on best paramters and estimators
+        
         Parameters
         ----------
-        x_test: test set; y_test: test label"""
+        x_test: test set; y_test: test label
+        Return
+        ----------
+        Predict Proba for test data"""
+
         self.test_x, self.test_y = x_test, y_test
+        param_df = pd.read_csv(RESULT_PATH)
+        param_df.sort_values('loss', ascending = True, inplace = True)
+
+        best = ast.literal_eval(param_df.loc[0, 'params'])
+        best['n_estimator'] = int(param_df.loc[0, 'estimators'])
+        optim_type = param_df.loc[0, 'optim_type']
         for parameter_name in ['num_leaves', 'subsample_for_bin', 'min_data_in_leaf',
                                'max_bin', 'bagging_freq']:
-            self.params[parameter_name] = int(self.params[parameter_name])
-        self.gbm = lgb.train(self.params, self.train_set,
-                             feature_name=['f' + str(i + 1) for i in range(train_X.shape[-1])])
+            best[parameter_name] = int(best[parameter_name])
+        self.gbm = lgb.train(best, self.train_set,
+                             feature_name=['f' + str(i + 1) for i in range(self.x_train.shape[-1])])
         self.pred = self.gbm.predict(x_test)
-        print("Model will be trained with best parameters obtained from Hyperopt ... \n\n\n")
-        print("Model trained with {} estimators on the following parameters: \n{}".format(self.estimator, self.params))
-
-    def evaluate(self):
-        """This function generates the evaluation report for the model"""
-        pred = self.pred
-        print('check pred')
-        (self.fpr, self.tpr, self.thresholds) = roc_curve(y_true=self.test_y, y_score=pred)
-        print('fpr, tpr, thresh check')
-        self.fnr = 1- self.tpr
-        print('fnr check')
-        self.roc_auc = auc(self.fpr, self.tpr)
-        print('roc_auc check')
-        self.precision, self.recall, _ = precision_recall_curve(self.test_y, pred)
-        print('precision recall check')
-        self.pr_auc = auc(self.recall, self.precision)
-        print('pr_auc check')
-        eval_list = ['feature_importance','roc', 'prcurve', 'fpr_fnr']
-        for eval_name in eval_list:
-            try:
-                func = getattr(self,eval_name)
-                func()
-            except:
-                print('Not valid evaluation type')
-
-    def feature_importance(self):
+        print("Model will be trained with best parameters obtained from {} ... \n\n\n".format(optim_type))
+        print("Model trained on the following parameters: \n{}".format(best))
         print('Plotting feature importances...')
         ax = lgb.plot_importance(self.gbm, max_num_features=10)
         plt.savefig('feature_importance.png')
-              
-
-    def roc(self):
-        fpr, tpr, roc = self.fpr, self.tpr, self.roc_auc
-
-        plt.figure(figsize=(16, 8))
-        lw = 2
-
-        plt.plot(fpr, tpr, color='darkorange',
-                 lw=lw, label='ROC curve (area = %0.2f)' % self.roc_auc, alpha=0.5)
-
-        plt.plot([0, 1], [0, 1], color='navy', lw=lw, linestyle='--', alpha=0.5)
-
-        plt.xlim([0.0, 1.0])
-        plt.ylim([0.0, 1.05])
-        plt.xticks(fontsize=16)
-        plt.yticks(fontsize=16)
-        plt.grid(True)
-        plt.xlabel('False Positive Rate', fontsize=16)
-        plt.ylabel('True Positive Rate', fontsize=16)
-        plt.title('Receiver operating characteristic', fontsize=20)
-        plt.legend(loc="lower right", fontsize=16)
-        plt.savefig('roc.png')
-        
-    def prcurve(self):
-        '''
-        A class method to output the precision recall curve for an instance
-        '''
-        recall, precision, pr_auc = self.recall, self.precision, self.pr_auc
-        test_y =  self.test_y
-        # plot the precision-recall curves
-        no_skill = len(test_y[test_y==1]) / len(test_y)
-        plt.figure(figsize = (16,8))
-        plt.plot([0, 1], [no_skill, no_skill], color='navy', linestyle='--',
-                 alpha=0.5)
-        plt.plot(recall, precision, color='darkorange',
-                 label='ROC curve (area = %0.2f)'% pr_auc, alpha=0.5)
-        # axis labels
-        plt.title('Precision Recall Curve', size = 20)
-        plt.xlabel('Recall', fontsize=16)
-        plt.ylabel('Precision', fontsize=16)
-        plt.grid(True)
-        plt.xticks(fontsize=16)
-        plt.yticks(fontsize=16)
-        # show the legend
-        plt.legend(fontsize=16)
-        plt.savefig('prcurve.png')
-    def fpr_fnr(self):
-        '''
-        A class method to output the fpr_fnr curve for an instance
-        '''
-        lw = 2
-        fpr, fnr, thresholds = self.fpr, self.fnr, self.thresholds
-        plt.figure(figsize = (16,8))
-        plt.plot(thresholds, fpr, color='blue', lw=lw, label='FPR', alpha=0.5)
-        plt.plot(thresholds, fnr, color='green', lw=lw, label='FNR', alpha=0.5)
-        plt.xlim([0.0, 1.0])
-        plt.ylim([0.0, 1.05])
-        plt.xticks(fontsize=16)
-        plt.yticks(fontsize=16)
-        plt.grid(True)
-        plt.xlabel('Threshold', fontsize=16)
-        plt.ylabel('Error Rate', fontsize=16)
-        plt.title('FPR-FNR curves', fontsize=20)
-        plt.legend(loc="lower left", fontsize=16)
-        plt.savefig('fpr-fnr.png')
-
-
-
-obj = Lgbmclass(train_X, train_y)
-obj.parameter_tuning('optuna_space')
-obj.train(train_X, train_y)
-obj.evaluate()
+        return self.pred

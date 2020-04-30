@@ -2,6 +2,7 @@
 
 from mlpipeline.CatboostML import CatboostModel
 from mlpipeline.xgb_class import XGBoostModel
+from mlpipeline import lgbmclass as lgbc
 import pandas as pd
 import logging
 import configparser
@@ -111,9 +112,9 @@ def main():
     xgb_model.train_models(optim_type='hyperopt')
 
     ##### KShitij   #### LightGBM 
-
-
-
+    obj = lgbc.Lgbmclass(train_X, train_y)
+    obj.parameter_tuning('optuna_space')
+    obj.train(test_X, test_y)
 
     #### Tanaby #### Apply the test set and get the model evaluation results
 
