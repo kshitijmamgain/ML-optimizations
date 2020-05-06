@@ -103,8 +103,8 @@ def main():
 
     ####### SASHA ######## ADD the CATBOOST Class (Vanilla class for training)
 	
-	catboost_model= Ctbclass(x_train, y_train, 'GPU', 'random')
-	catboost_model.train(x_test,y_test)
+    catboost_model= Ctbclass(x_train, y_train, 'GPU', 'random')
+    catboost_model.train(x_test,y_test)
 
 
 
