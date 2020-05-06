@@ -12,13 +12,7 @@ import matplotlib.pyplot as plt
 import catboost as cb
 from catboost import CatBoost
 import shap
-#from google.colab import files
 
-df = pd.read_csv('c:/users/hajyhass/downloads/sample.csv', header=None)
-X = df.iloc[:, 2:]
-y = df.iloc[:, 1]
-x_train, x_test, y_train, y_test = train_test_split(X, y, train_size=0.0005)
-x_train, x_test, y_train, y_test = train_test_split(x_train, y_train, train_size=0.666)
 
 #GLOBAL HYPEROPT PARAMETERS
 NUM_EVALS = 5 #number of hyperopt evaluation rounds
