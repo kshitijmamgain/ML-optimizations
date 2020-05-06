@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-from mlpipeline.CatboostML import CatboostModel
+from mlpipeline.catboost_class import Ctbclass
 from mlpipeline.xgb_class import XGBoostModel
 from mlpipeline import lgbmclass as lgbc
 import pandas as pd
@@ -102,6 +102,9 @@ def main():
 
 
     ####### SASHA ######## ADD the CATBOOST Class (Vanilla class for training)
+	
+	catboost_model= Ctbclass(x_train, y_train, 'GPU', 'random')
+	catboost_model.train(x_test,y_test)
 
 
 
