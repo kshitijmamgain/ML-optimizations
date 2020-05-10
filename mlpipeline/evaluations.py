@@ -53,7 +53,7 @@ class Model_Evaluation():
         """
         metric_results = dict()
         precision, recall, _ = precision_recall_curve(self.test_y, self.pred_y)
-        pred_y_bin = np.where(scores > 0.5, 1, 0)
+        pred_y_bin = np.where(self.pred_y > 0.5, 1, 0)
 
         metric_results['algo'] = algo
 
