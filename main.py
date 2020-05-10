@@ -1,12 +1,14 @@
 # -*- coding: utf-8 -*-
 
 from mlpipeline.CatboostML import CatboostModel
+from mlpipline.evaluation import Model_Evaluation
 #from mlpipeline import XGboostModel 
 import pandas as pd
 import logging
 import configparser
 import extentions.utilities as utilities
 import os
+import pickle as pkl
 
 
 
@@ -76,7 +78,8 @@ def main():
     config_path = args.config_path
     result_path = args.result_path
     save_path = args.save_path
-    optimization = 
+    optimization = args.optimization
+    algorithm = args.algorithm
 
 	# Read the configuration file
 	config = json.load(open(config_path, 'r'))
@@ -102,27 +105,66 @@ def main():
 
     ####### SASHA ######## ADD the CATBOOST Class (Vanilla class for training)
 
+    if algorithm == "ctb":
+    
+        model= Ctbclass(x_train, y_train, 'GPU', 'random')
+        model.train(x_test,y_test)
+        predictions =  model.test (X_test,y_test)
+
+    elif algorithm == "xgb":
+
+        model = XGBoostModel(train=train_data, test=test_data, target_feature=0, max_evals = 10,
+                            n_fold=5, num_boost_rounds=100, early_stopping_rounds=10,
+                            seed=42, GPU=False)
+        model.train_model(optim_type='hyperopt')
+        predictions =  model.test (X_test,y_test)
 
 
-    ######   AHMAD #####   XGBOOST
+    else:
 
-
-
-    ##### KShitij   #### LightGBM 
-
-
+        model = lgbc.Lgbmclass(train_X, train_y)
+        model.parameter_tuning('optuna_space')
+        model.train(test_X, test_y)
+        predictions =  model.test (X_test,y_test)
 
 
     #### Tanaby #### Apply the test set and get the model evaluation results
 
 
+    me = Model_Evaluation() 
+    me.set_label_scores(predictions,y_test)
 
+    roc_filename  = "roc_" + algorithm + "_" + optimization +".jpg"
+    roc_filename = os.path.join("figs",roc_filename)
+    pr_filename  = "pr_" + algorithm + "_" + optimization +".jpg"
+    pr_filename = os.path.join("figs",pr_filename)
+    fpr_fnr_filename = "fpr_fnr_" + "_" + algorithm + "_" + optimization +".jpg"
+    fpr_fnr_filename = os.path.join("figs",fpr_fnr_filename)
+
+    results = me.get_metrics(roc_filename,
+                   pr_filename,
+                   fpr_fnr_filename,
+                   algorithm)
+
+    if  not results: raise Exception("no results generated! please check!")
+    else:  ### Print the results #### 
+        logging.info("results generated, will be printing the results")
+        print ("*" * 100)
+        print ("Results obtained from %s" %(algorithm))
+        print ("   PR_AUC   :", results['pr-auc'])
+        print( " Classification Report  \n", results['class_report'])
+        print (" Confusion Matrix   \n", results['conf_metrics'])
+        print (" ROC AUC   ",results['roc_auc'])
+        print ("*" * 100)
+        pkl.dump(results, open(algorithm +"_"+ optimization, "wb"))
 
 
 if __name__ == "__main__":
     args = _get_args()
     log_filename = args.log_path
     os.makedirs(os.path.dirname(log_filename), exist_ok=True)
+    os.makedirs("figs")
+
     logging.basicConfig(filename=log_filename, filemode='w+', level=logging.INFO)
     main()
 
