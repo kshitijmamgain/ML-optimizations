@@ -107,8 +107,8 @@ def main():
 
     ####### SASHA ######## ADD the CATBOOST Class (Vanilla class for training)
 	
-    model= Ctbclass(x_train, y_train, 'GPU', 'random')
-    model.train(x_test,y_test)
+    model= Ctbclass(x_train, y_train,'random')   ##trains (tunes parameters)
+    model.test(x_test,y_test)  ## applies best parameters on the test data set
 
 
 
