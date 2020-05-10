@@ -100,11 +100,11 @@ class Lgbmclass():
         '''
         '''
         methodlist = ['hypeopt_space','optuna_space','random_space']
-        optim_type = 'random_space'
+        optim_type = tune_type + '_space'
         if optim_type not in methodlist:
             raise TypeError('Otimization type must have a valid space:',
-                            '\n\t\t hyperopt_space, optuna_space or random_space')
-        tuner = getattr(self, tune_type)
+                            '\n\t\t hyperopt, optuna or random')
+        tuner = getattr(self, optim_type)
         if diagnostic:
             return(tuner())
         else:
