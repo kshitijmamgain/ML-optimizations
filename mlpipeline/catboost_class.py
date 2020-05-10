@@ -32,7 +32,6 @@ SEED = 47
 
 
 
-
 # random search
 PARAM_GRID = {
     'l2_leaf_reg': list(range( 0, 2, 1)),
@@ -107,7 +106,7 @@ H_SPACE = {
 class Ctbclass():
     '''Catboost Class applying Hyperopt and Optuna techniques '''
     iteration = 0
-    def __init__(self, x_train, y_train, optimization_method, lossguide_verifier = False , GPU = False):
+    def __init__(self, x_train, y_train, optimization_method, lossguide_verifier = False , GPU = True):
         '''Initializes Catboost Train dataset object
         Parameters
         ----------
@@ -118,7 +117,7 @@ class Ctbclass():
         #self.switch = switch
         self.x_train = x_train
         self.y_train = y_train
-        self.optimization_method =optimization_method
+        self.optimization_method = optimization_method
         
         
         self.lossguide_verifier = lossguide_verifier
@@ -161,7 +160,7 @@ class Ctbclass():
         self.estimator = n_estimators
         print(params)
         return loss, params, n_estimators, run_time
-    def parameter_tuning(self):
+    def train(self):
         if self.optimization_method == 'hyperopt':
             return self.hyperopt_space()
         if self.optimization_method == 'optuna':
@@ -426,12 +425,12 @@ class Ctbclass():
         return [loss, params,iteration, n_estimators, run_time]
 
 
-    def train(self, x_test, y_test):
+    def test(self, x_test, y_test):
         """This function evaluates the model on paramters and estimators
         Parameters
         ----------
         x_test: test set; y_test: test label"""
-        self.parameter_tuning()
+        self.train()
         self.test_set = cb.Pool(x_test, y_test)
         self.cat = cb.train(params=self.params, pool=self.train_set)
         self.pred = self.cat.predict(x_test,prediction_type="Class")
@@ -550,4 +549,12 @@ class Ctbclass():
         plt.legend(loc="lower left", fontsize=16)
         plt.savefig('fpr-fnr.png')
         
+
+
+
+
+        
+
+
+
 
