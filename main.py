@@ -116,7 +116,7 @@ def main():
 
     ##### KShitij   #### LightGBM 
     obj = lgbc.Lgbmclass(train_X, train_y)
-    obj.parameter_tuning('optuna_space')
+    obj.parameter_tuning('optuna')
     obj.train(test_X, test_y)
 
     #### Tanaby #### Apply the test set and get the model evaluation results
