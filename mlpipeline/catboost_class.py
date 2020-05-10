@@ -30,6 +30,9 @@ EARLY_STOPPING_ROUNDS = 25
 SEED = 47
 
 
+
+
+
 # random search
 PARAM_GRID = {
     'l2_leaf_reg': list(range( 0, 2, 1)),
@@ -47,6 +50,23 @@ PARAM_GRID = {
     'task_type' : ['CPU'],
     'leaf_estimation_backtracking': ['No', 'AnyImprovement']
 
+   
+                              
+    # 'num_leaves': list(range(16, 196, 4)),
+    # 'max_bin': [254],
+    # 'lambda_l1': list(np.linspace(0, 1)),
+    # 'lambda_l2': list(np.linspace(0, 1)),
+    # 'min_data_in_leaf' : list(range(20, 500, 10)),
+    # 'class_weight': [None, 'balanced'],
+   
+    #'eval_metric': ['AUC'],
+    # 'boosting_type': ['gbdt', 'goss'],
+    
+    # 'learning_rate': [0.03, 0.1]
+    # 'feature_fraction': list(np.linspace(0.4, 1.0)),
+    # 'subsample_for_bin': list(range(20000, 300000, 20000)),
+    # 'bagging_freq': list(range(1, 7)),
+    # 'verbosity' : [0],
 }
 
 
@@ -87,18 +107,23 @@ H_SPACE = {
 class Ctbclass():
     '''Catboost Class applying Hyperopt and Optuna techniques '''
     iteration = 0
-    def __init__(self, x_train, y_train, switch, optimization_method, lossguide_verifier=False):
+    def __init__(self, x_train, y_train, optimization_method, lossguide_verifier = False , GPU = False):
         '''Initializes Catboost Train dataset object
         Parameters
         ----------
         x_train: train data
         y_train: label data
         switch: GPU processing Vs CPU'''
-        self.switch = switch
+        self.GPU = GPU
+        #self.switch = switch
         self.x_train = x_train
         self.y_train = y_train
-        self.optimization_method =optimization_method  
+        self.optimization_method =optimization_method
+        
+        
         self.lossguide_verifier = lossguide_verifier
+        
+        #self.optuna_results = pd.DataFrame(columns=)
         self.train_set = cb.Pool(self.x_train, self.y_train)
         
         
@@ -114,7 +139,11 @@ class Ctbclass():
         # initializing the timer
          
         start = timer()
-       
+        # if optim_type == 'Optuna':
+        #     cv_results = cb.cv(self.train_set, params, fold_count=N_FOLDS, num_boost_round=NUM_BOOST_ROUNDS,
+        #                    early_stopping_rounds=EARLY_STOPPING_ROUNDS, stratified=True, partition_random_seed=SEED,
+        #                    plot=True)
+        # else:
         
         cv_results = cb.cv(self.train_set, params, fold_count=N_FOLDS,
                            num_boost_round=NUM_BOOST_ROUNDS,
@@ -137,7 +166,7 @@ class Ctbclass():
             return self.hyperopt_space()
         if self.optimization_method == 'optuna':
             return self.optuna_space()
-        if self.optimization_method == 'random':
+        if self.optimization_method == 'random_search':
             return self.random_space()
     def hyperopt_space(self):
         '''A method to call the hyperopt optimization
@@ -153,18 +182,24 @@ class Ctbclass():
         trials: the database in which to store all the point evaluations of the search'''
         fn_name, space, algo, trials='hyperopt_obj', H_SPACE, tpe.suggest, Trials()
         
-        
-        if self.switch == 'CPU':
+        # score_function_list0=hp.choice('score_function',['L2', 'Cosine'])
+        # score_function_list1=hp.choice('score_function',['L2', 'SolarL2', 'LOOL2', 'NewtonL2'])
+        # score_function_list2=hp.choice('score_function',['L2', 'SolarL2', 'LOOL2', 'NewtonL2', 'Cosine'])
+        if self.GPU == False:
             space.update({'rsm': hp.uniform('rsm', 0.1, 1),
                           'random_strength': hp.loguniform('random_strength', 
                                                            np.log(0.005), np.log(5))})
-        if self.switch == 'GPU':
+        if self.GPU == True:
             space.update({'leaf_estimation_backtracking' : hp.choice ('leaf_estimation_backtracking',['Armijo', 'No', 'AnyImprovement'])})
-           
-        if (self.lossguide_verifier == True) and (self.switch =='GPU'):
-            space.update({'score_function': hp.choice('score_function',['L2', 'SolarL2', 'LOOL2', 'NewtonL2']),'thread_count': 2})
+            
+        # else:
+        #     space.update({'score_function': hp.choice('score_function',
+        #                                                ['L2', 'SolarL2', 'LOOL2', 'NewtonL2','Cosine']),'thread_count': 2})
+            
 
-        if (self.lossguide_verifier == False) and (self.switch =='GPU'):
+        if (self.lossguide_verifier == True) and (self.GPU == True):
+            space.update({'score_function': hp.choice('score_function',['L2', 'SolarL2', 'LOOL2', 'NewtonL2']),'thread_count': 2})
+        if (self.lossguide_verifier == False) and (self.GPU == True):
             space.update({'score_function': hp.choice('score_function',['Cosine', 'L2', 'SolarL2', 'LOOL2', 'NewtonL2']),'thread_count': 2})
 
 
@@ -185,7 +220,7 @@ class Ctbclass():
         #space = H_SPACE
         self.iteration += 1
         # Extract the bootstrap_type
-        if self.switch == 'GPU':
+        if self.GPU == True:
             params['task_type'] = 'GPU'
         if params['bootstrap_type']['bootstrap_type'] == 'Bayesian':
             #print(params['bootstrap_type'])
@@ -201,7 +236,7 @@ class Ctbclass():
             params['max_leaves'] = params['grow_policy']['max_leaves']
             #print(params['max_leaves'])
             params['grow_policy'] = params['grow_policy']['grow_policy']
-            if self.switch == 'CPU':
+            if self.GPU == False:
               params['score_function'] = 'L2'
             else:
               self.lossguide_verifier =True
@@ -216,6 +251,9 @@ class Ctbclass():
         else:
             params['grow_policy'] = params['grow_policy']['grow_policy']
             print(params['grow_policy'])
+
+        if self.GPU == False:
+            params['taks_type'] = 'CPU'
 
         # for parameter_name in ['l2_leaf_reg', 'depth', 'border_count']:
         #     params[parameter_name] = int(params[parameter_name])
@@ -244,7 +282,7 @@ class Ctbclass():
 
     def optuna_obj(self, trial):
         '''Defining the parameters space inside the function for optuna optimization'''
-        if self.switch == 'CPU':
+        if self.GPU == False:
           list_score_function = ['Cosine', 'L2']
           list_task_type = ['CPU']
           list_leaf_estimation_backtracking = ['No', 'AnyImprovement']
@@ -277,7 +315,7 @@ class Ctbclass():
 
         optim_type = 'Optuna'
         self.iteration += 1
-        if self.switch == 'CPU':
+        if self.GPU == False:
           params['random_strength'] = trial.suggest_uniform('random_strength', 
                                                             np.log(0.005), np.log(5))
           params['rsm'] = trial.suggest_uniform('rsm', 0.1, 1)
@@ -285,10 +323,10 @@ class Ctbclass():
         if params['grow_policy'] == 'Lossguide':
           params['max_leaves'] = trial.suggest_int('max_leaves', 2, 32)
           
-        if params['grow_policy'] == 'Lossguide' and self.switch =='CPU':
+        if params['grow_policy'] == 'Lossguide' and self.GPU == False:
           list_score_function = ['L2']
 
-        if params['grow_policy'] == 'Lossguide' and self.switch =='GPU':
+        if params['grow_policy'] == 'Lossguide' and self.GPU == True:
           list_score_function = ['L2', 'NewtonL2','SolarL2', 'LOOL2' ]
           
         if params['bootstrap_type'] == 'Bayesian':
@@ -322,18 +360,18 @@ class Ctbclass():
         random_results = pd.DataFrame(columns=['loss', 'params', 'iteration', 'estimators',
                                                'time'], index=list(range(MAX_EVALS)))
         
-        if self.switch == 'CPU':
+        if self.GPU == False:
             space.update({'rsm' : list(np.linspace(0.1, 1.0)),
                           'random_strength': list(np.logspace(np.log(0.005), np.log(5), base=np.exp(1), num=1000))})
             
-        if self.switch == 'GPU':
+        if self.GPU == True:
             space.update({'leaf_estimation_backtracking' : ['Armijo', 'No', 'AnyImprovement'],'thread_count' :[2]})
             
 
           
-        if (self.lossguide_verifier == True) and (self.switch =='GPU'):
+        if (self.lossguide_verifier == True) and (self.GPU == True):
              space.update({'score_function': ['L2', 'SolarL2', 'LOOL2', 'NewtonL2']})
-        if (self.lossguide_verifier == False) and (self.switch =='GPU'):
+        if (self.lossguide_verifier == False) and (self.GPU == True):
              space.update({'score_function': ['Cosine', 'L2', 'SolarL2', 'LOOL2', 'NewtonL2']})
 
 
@@ -360,8 +398,12 @@ class Ctbclass():
         self.iteration += 1
         random.seed(SEED) ##For True Randomized Search deactivate the fixated SEED
 
-        if self.switch == 'GPU':
+        if self.GPU == True:
             params['task_type'] = 'GPU'
+        
+        if self.GPU == False:
+            params['task_type'] = 'CPU'
+        
         
 
         bagging_temperature_dist = list(np.logspace(np.log(1), np.log(50), base=np.exp(1), num=1000))
@@ -371,10 +413,10 @@ class Ctbclass():
         max_leaves_dist = list(range( 2, 32, 1))
         if params['grow_policy'] == 'Lossguide':
             params['max_leaves'] = random.sample(max_leaves_dist,1)[0] 
-            if self.switch == 'CPU':
+            if self.GPU == False:
                 params['score_function'] = 'L2'
             else:
-                self.lossguide_verifier =True
+                self.lossguide_verifier = True
 
         # Perform n_folds cross validation
 
@@ -507,5 +549,5 @@ class Ctbclass():
         plt.title('FPR-FNR curves', fontsize=20)
         plt.legend(loc="lower left", fontsize=16)
         plt.savefig('fpr-fnr.png')
-
+        
 
