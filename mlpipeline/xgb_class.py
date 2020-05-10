@@ -27,7 +27,7 @@ class XGBoostModel():
     Optuna and RandomSearch
     """
 
-    def __init__(self, train, test, target_feature, max_evals, n_fold, num_boost_rounds,
+    def __init__(self, x_train, y_train, max_evals, n_fold, num_boost_rounds,
                  early_stopping_rounds, seed, GPU):
 
       """
@@ -35,12 +35,10 @@ class XGBoostModel():
 
       Parameters
       ----------
-      train: dataframe
-        A dataframe with observations for training
-      test: dataframe
-        A dataframe with observations for testing
-      target_feature: string or int
-        The column name or index corresponding to the target feature
+      x_train: numpy array, Pandas dataframe or Series
+        Contains observations for predictor features to be used in training
+      y_train: numpy array, Pandas dataframe or Series
+        Contains with observations for target feature to be used in training
       max_evals: int
         The number of trials to run the optimization algorithms
       n_fold: int
@@ -56,12 +54,6 @@ class XGBoostModel():
         Enable GPU usage and include GPU specific-parameters to parameter search space
 
       """
-      if not isinstance(train, pd.DataFrame):
-        raise TypeError('Input training set must be a dataframe')
-      if not isinstance(test, pd.DataFrame):
-        raise TypeError('Input testing set must be a dataframe')
-      if type(target_feature) not in [str, int]:
-        raise TypeError('Target Feature must be a string column name or integer column index')
       if not isinstance(max_evals, int):
         raise TypeError('Number of evaluations must be an integer')
       if not isinstance(n_fold, int):
@@ -79,42 +71,18 @@ class XGBoostModel():
       self.nfold = n_fold
       self.num_boost_rounds = num_boost_rounds
       self.early_stopping_rounds = early_stopping_rounds
-      self.target_feature = target_feature
-      self.train, self.test = train, test
+      self.X_train, self.y_train = x_train, y_train
+      self.dtrain = xgb.DMatrix(self.X_train, label=self.y_train)
+      label = self.dtrain.get_label()
+      self.ratio = float(np.sum(label == 0)) / np.sum(label == 1)
+      self.dtest = None
       self.best_params = None
       self.best_model = None
       self.output = None
-      self.dtrain, self.dtest = None, None
-      self.y_test = None
       self.seed = seed
       self.GPU = GPU
       self.trained = False
       self.tested = False
-
-
-    def prepare_data(self):
-
-      """
-      Prepares the input data for the XGBoost Model
-
-      """
-      if type(self.target_feature) == int:
-        self.x_train = self.train.drop(columns=self.train.columns[self.target_feature])
-        self.y_train = self.train.iloc[:, self.target_feature]
-        self.x_test = self.test.drop(columns=self.train.columns[self.target_feature])
-        self.y_test = self.test.iloc[:, self.target_feature]
-        self.dtrain = xgb.DMatrix(self.x_train, label=self.y_train)
-        self.dtest = xgb.DMatrix(self.x_test, label=self.y_test)
-      else:
-        self.x_train = self.train.drop(columns=self.target_feature)
-        self.y_train = self.train.loc[:, self.target_feature]
-        self.x_test = self.test.drop(columns=self.target_feature)
-        self.y_test= self.test.loc[:, self.target_feature]
-        self.dtrain = xgb.DMatrix(self.x_train, label=self.y_train)
-        self.dtest = xgb.DMatrix(self.x_test, label=self.y_test)
-
-      label = self.dtrain.get_label()
-      self.ratio = float(np.sum(label == 0)) / np.sum(label == 1)
       
     def cross_validation(self, space):
 
@@ -381,7 +349,7 @@ class XGBoostModel():
           The value of the loss function cross-validated over n-folds for the
           current set of hyperparameters for the trial
         """
-        if self.GPU is True:
+        if self.GPU:
           tree_method_list = ['gpu_hist']
           sampling_method = ['gradient_based']
           predictor = ['gpu_predictor']
@@ -610,7 +578,7 @@ class XGBoostModel():
       print('\n')
       return best
 
-    def train_model(self, optim_type):
+    def train(self, optim_type):
       """
       Train the three best models obtained by the HyperOpt, Optuna and Random
       Search optimization algorithms
@@ -625,7 +593,6 @@ class XGBoostModel():
         raise ValueError('Optimizer type {} not supported'.format(optim_type))
 
       print('Starting training...')
-      self.prepare_data()
       self.output = {}
       self.optim_type = optim_type
 
@@ -646,16 +613,24 @@ class XGBoostModel():
 
       self.trained = True
 
-    def test_model(self):
+    def predict(self, x_test, y_test):
       """
-      Evaluate the three best models obtained by the HyperOpt, Optuna and
-      Random Search optimization algorithms on the testing set
+      Use the trained model with the best hyperparameters to predict on the testing set
+
+      Parameters
+      ----------
+      x_test: numpy array, Pandas dataframe or Series
+        Contains observations of predictor features to be used in testing
+      y_test: numpy array, Pandas dataframe or Series
+        Contains with observations of target feature to be used in testing
+
+
       """
       if not self.trained:
         raise Exception('Please train the models using the train_model' +
                                                        'method before testing')
-
-    
+      self.X_test, self.y_test = x_test, y_test
+      self.dtest = xgb.DMatrix(x_test, label=self.y_test)
       self.prediction = self.best_model.predict(self.dtest, 
                                           ntree_limit=self.num_boost_rounds)
       self.prediction = np.float64(self.prediction)
@@ -691,10 +666,10 @@ class XGBoostModel():
       if importance_type == 'shap':
         if self.best_params['booster'] == 'gbtree':
           explainer = shap.TreeExplainer(self.best_model)
-          importance = explainer.shap_values(self.x_train)
+          importance = explainer.shap_values(self.X_train)
           fig = plt.figure()
           fig.suptitle(self.optim_type + ' - Feature Importance - ' + importance_type)
-          shap.summary_plot(importance, self.x_train)
+          shap.summary_plot(importance, self.X_train)
         else:
           print('Importance type SHAP only valid for gbtree type booster')
       else:
