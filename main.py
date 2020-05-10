@@ -6,8 +6,12 @@ from mlpipeline import lgbmclass as lgbc
 import pandas as pd
 import logging
 import configparser
-import extentions.utilities as utilities
+import extensions.utilities as utilities
 import os
+import warnings
+from sklearn.exceptions import DataConversionWarning
+import argparse
+import json
 
 
 
@@ -77,7 +81,7 @@ def main():
     config_path = args.config_path
     result_path = args.result_path
     save_path = args.save_path
-    optimization = 
+    optimization = args.optimization
 
 	# Read the configuration file
 	config = json.load(open(config_path, 'r'))
@@ -103,21 +107,22 @@ def main():
 
     ####### SASHA ######## ADD the CATBOOST Class (Vanilla class for training)
 	
-    catboost_model= Ctbclass(x_train, y_train, 'GPU', 'random')
-    catboost_model.train(x_test,y_test)
+    model= Ctbclass(x_train, y_train, 'GPU', 'random')
+    model.train(x_test,y_test)
 
 
 
     ######   AHMAD #####   XGBOOST
-    xgb_model = XGBoostModel(train=train_data, test=test_data, target_feature=0, max_evals = 10,
-                            n_fold=5, num_boost_rounds=100, early_stopping_rounds=10,
-                            seed=42, GPU=False)
-    xgb_model.train_model(optim_type='hyperopt')
+    model = XGBoostModel(X_train, y_train, max_evals=10, n_fold=5, 
+                        num_boost_rounds=100, early_stopping_rounds=10,
+                        seed=42, GPU=False)
+    model.train(optim_type='hyperopt')
+    model.predict(X_test, y_test)
 
     ##### KShitij   #### LightGBM 
-    obj = lgbc.Lgbmclass(train_X, train_y)
-    obj.parameter_tuning('optuna')
-    obj.train(test_X, test_y)
+    model = lgbc.Lgbmclass(X_train, y_train)
+    model.parameter_tuning('hyperopt')
+    model.train(X_test, y_test)
 
     #### Tanaby #### Apply the test set and get the model evaluation results
 
