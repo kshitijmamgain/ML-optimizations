@@ -117,7 +117,8 @@ def main():
                         num_boost_rounds=100, early_stopping_rounds=10,
                         seed=42, GPU=False)
     model.train(optim_type='hyperopt')
-    model.predict(X_test, y_test)
+    model.test(X_test, y_test)
+    predictions = model.predictions
 
     ##### KShitij   #### LightGBM 
     model = lgbc.Lgbmclass(X_train, y_train)
