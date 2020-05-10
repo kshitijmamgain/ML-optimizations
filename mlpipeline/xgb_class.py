@@ -613,7 +613,7 @@ class XGBoostModel():
 
       self.trained = True
 
-    def predict(self, x_test, y_test):
+    def test(self, x_test, y_test):
       """
       Use the trained model with the best hyperparameters to predict on the testing set
 
@@ -631,10 +631,9 @@ class XGBoostModel():
                                                        'method before testing')
       self.X_test, self.y_test = x_test, y_test
       self.dtest = xgb.DMatrix(x_test, label=self.y_test)
-      self.prediction = self.best_model.predict(self.dtest, 
+      self.predictions = self.best_model.predict(self.dtest, 
                                           ntree_limit=self.num_boost_rounds)
-      self.prediction = np.float64(self.prediction)
-      score = log_loss(self.y_test, self.prediction)
+      score = log_loss(self.y_test, np.float64(self.predictions))
       self.output[self.optim_type]['score'] = score
  
       self.tested = True
