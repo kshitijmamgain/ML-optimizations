@@ -16,21 +16,6 @@ import shap
 
 
 
-#GLOBAL HYPEROPT PARAMETERS
-NUM_EVALS = 5 #number of hyperopt evaluation rounds
-N_FOLDS = 5 #number of cross-validation folds on data in each evaluation round
-MAX_EVALS = 5
-
-#CATBOOST PARAMETERS
-CB_MAX_DEPTH = 16 #maximum tree depth in CatBoost
-OBJECTIVE_CB_REG = 'MAE' #CatBoost regression metric
-OBJECTIVE_CB_CLASS = 'Logloss' #CatBoost classification metric
-NUM_BOOST_ROUNDS = 100
-EARLY_STOPPING_ROUNDS = 25
-SEED = 47
-
-
-
 
 
 # random search
@@ -49,24 +34,7 @@ PARAM_GRID = {
     'od_type': ['IncToDec', 'Iter'],
     'task_type' : ['CPU'],
     'leaf_estimation_backtracking': ['No', 'AnyImprovement']
-
-   
-                              
-    # 'num_leaves': list(range(16, 196, 4)),
-    # 'max_bin': [254],
-    # 'lambda_l1': list(np.linspace(0, 1)),
-    # 'lambda_l2': list(np.linspace(0, 1)),
-    # 'min_data_in_leaf' : list(range(20, 500, 10)),
-    # 'class_weight': [None, 'balanced'],
-   
-    #'eval_metric': ['AUC'],
-    # 'boosting_type': ['gbdt', 'goss'],
-    
-    # 'learning_rate': [0.03, 0.1]
-    # 'feature_fraction': list(np.linspace(0.4, 1.0)),
-    # 'subsample_for_bin': list(range(20000, 300000, 20000)),
-    # 'bagging_freq': list(range(1, 7)),
-    # 'verbosity' : [0],
+  
 }
 
 
@@ -107,16 +75,16 @@ H_SPACE = {
 class Ctbclass():
     '''Catboost Class applying Hyperopt and Optuna techniques '''
     iteration = 0
-    def __init__(self, x_train, y_train , lossguide_verifier = False , GPU = True):
+    def __init__(self, X_train, y_train , lossguide_verifier = False , GPU = True):
         '''Initializes Catboost Train dataset object
         Parameters
         ----------
-        x_train: train data
+        X_train: train data
         y_train: label data
         switch: GPU processing Vs CPU'''
         self.GPU = GPU
         #self.switch = switch
-        self.x_train = x_train
+        self.X_train = X_train
         self.y_train = y_train
         #self.optimization_method = optimization_method
         
@@ -124,7 +92,7 @@ class Ctbclass():
         self.lossguide_verifier = lossguide_verifier
         
         #self.optuna_results = pd.DataFrame(columns=)
-        self.train_set = cb.Pool(self.x_train, self.y_train)
+        self.train_set = cb.Pool(self.X_train, self.y_train)
         
         
     def ctb_crossval(self, params, optim_type):
@@ -427,7 +395,7 @@ class Ctbclass():
         return [loss, params,iteration, n_estimators, run_time]
 
 
-    def test(self, x_test, y_test):
+    def test(self, X_test, y_test):
         """This function evaluates the model on paramters and estimators
         Parameters
         ----------
@@ -435,31 +403,31 @@ class Ctbclass():
         #self.train(self.hyperparameter_optimizer)
         #self.test_set = cb.Pool(x_test, y_test)
         self.cat = cb.train(params=self.params, pool=self.train_set)
-        self.predictions = self.cat.predict(x_test,prediction_type="Class")
+        self.predictions = self.cat.predict(X_test,prediction_type="Class")
         self.y_test = y_test
-        self.x_test = x_test
+        self.X_test = X_test
         print("Model will be trained with best parameters obtained from your choice of optimization model ... \n\n\n")
         print("Model trained with {} estimators on the following parameters: \n{}".format(self.estimator, self.params))
         
 
     def shap_summary(self):
         #x_test=self.x_test
-        z=shap.sample(self.x_test,nsamples = 100)
+        z=shap.sample(self.X_test,nsamples = 100)
         explainer=shap.KernelExplainer(self.cat.predict,z)
-        k_shap_values = explainer.shap_values(self.x_test)
+        k_shap_values = explainer.shap_values(self.X_test)
         print("Shap Summary Plot")
         plt.figure()
-        shap.summary_plot(k_shap_values, self.x_test, show=False)
+        shap.summary_plot(k_shap_values, self.X_test, show=False)
         plt.savefig('shap_summary.png')
         
     def shap_collective(self):
         shap.initjs()
         #x_test=self.x_test
-        z=shap.sample(self.x_test,nsamples=100)
+        z=shap.sample(self.X_test,nsamples=100)
         explainer=shap.KernelExplainer(self.cat.predict,z)
-        k_shap_values = explainer.shap_values(self.x_test)
+        k_shap_values = explainer.shap_values(self.X_test)
         
-        return shap.force_plot(explainer.expected_value, k_shap_values, x_test)
+        return shap.force_plot(explainer.expected_value, k_shap_values, X_test)
         #plt.clf()
         #plt.savefig('shap_collective.png')
 
@@ -551,11 +519,6 @@ class Ctbclass():
         plt.title('FPR-FNR curves', fontsize=20)
         plt.legend(loc="lower left", fontsize=16)
         plt.savefig('fpr-fnr.png')
-        
-
-
-
-
         
 
 
