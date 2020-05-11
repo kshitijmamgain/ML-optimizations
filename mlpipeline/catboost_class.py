@@ -32,6 +32,7 @@ SEED = 47
 
 
 
+
 # random search
 PARAM_GRID = {
     'l2_leaf_reg': list(range( 0, 2, 1)),
@@ -106,7 +107,7 @@ H_SPACE = {
 class Ctbclass():
     '''Catboost Class applying Hyperopt and Optuna techniques '''
     iteration = 0
-    def __init__(self, x_train, y_train, optimization_method, lossguide_verifier = False , GPU = True):
+    def __init__(self, x_train, y_train , lossguide_verifier = False , GPU = True):
         '''Initializes Catboost Train dataset object
         Parameters
         ----------
@@ -117,7 +118,7 @@ class Ctbclass():
         #self.switch = switch
         self.x_train = x_train
         self.y_train = y_train
-        self.optimization_method = optimization_method
+        #self.optimization_method = optimization_method
         
         
         self.lossguide_verifier = lossguide_verifier
@@ -160,12 +161,13 @@ class Ctbclass():
         self.estimator = n_estimators
         print(params)
         return loss, params, n_estimators, run_time
-    def train(self):
-        if self.optimization_method == 'hyperopt':
+    def train(self, hyperparameter_optimizer):
+        self.hyperparameter_optimizer = hyperparameter_optimizer
+        if self.hyperparameter_optimizer == 'hyperopt':
             return self.hyperopt_space()
-        if self.optimization_method == 'optuna':
+        if self.hyperparameter_optimizer == 'optuna':
             return self.optuna_space()
-        if self.optimization_method == 'random_search':
+        if self.hyperparameter_optimizer == 'random_search':
             return self.random_space()
     def hyperopt_space(self):
         '''A method to call the hyperopt optimization
@@ -430,40 +432,41 @@ class Ctbclass():
         Parameters
         ----------
         x_test: test set; y_test: test label"""
-        self.train()
-        self.test_set = cb.Pool(x_test, y_test)
+        #self.train(self.hyperparameter_optimizer)
+        #self.test_set = cb.Pool(x_test, y_test)
         self.cat = cb.train(params=self.params, pool=self.train_set)
-        self.pred = self.cat.predict(x_test,prediction_type="Class")
-        self.test_y = y_test
-        self.test_x = x_test
+        self.predictions = self.cat.predict(x_test,prediction_type="Class")
+        self.y_test = y_test
+        self.x_test = x_test
         print("Model will be trained with best parameters obtained from your choice of optimization model ... \n\n\n")
         print("Model trained with {} estimators on the following parameters: \n{}".format(self.estimator, self.params))
+        
 
     def shap_summary(self):
-        x_test=self.test_x
-        z=shap.sample(x_test,nsamples = 100)
+        #x_test=self.x_test
+        z=shap.sample(self.x_test,nsamples = 100)
         explainer=shap.KernelExplainer(self.cat.predict,z)
-        k_shap_values = explainer.shap_values(x_test)
+        k_shap_values = explainer.shap_values(self.x_test)
         print("Shap Summary Plot")
         plt.figure()
-        shap.summary_plot(k_shap_values, x_test, show=False)
+        shap.summary_plot(k_shap_values, self.x_test, show=False)
         plt.savefig('shap_summary.png')
         
     def shap_collective(self):
         shap.initjs()
-        x_test=self.test_x
-        z=shap.sample(x_test,nsamples=100)
+        #x_test=self.x_test
+        z=shap.sample(self.x_test,nsamples=100)
         explainer=shap.KernelExplainer(self.cat.predict,z)
-        k_shap_values = explainer.shap_values(x_test)
+        k_shap_values = explainer.shap_values(self.x_test)
         
         return shap.force_plot(explainer.expected_value, k_shap_values, x_test)
         #plt.clf()
         #plt.savefig('shap_collective.png')
 
     def performance(self):
-        y_test=self.test_y
-        y_test=np.array(y_test)
-        predictions=self.pred
+        #y_test=self.y_test
+        y_test=np.array(self.y_test)
+        predictions=self.predictions
                 
         # Confusion matrix
         print(confusion_matrix(y_test, predictions))
@@ -474,15 +477,15 @@ class Ctbclass():
 
     def evaluate(self):
         """This function generates the evaluation report for the model"""
-        pred = self.pred
+        predictions = self.predictions
         print('check pred')
-        (self.fpr, self.tpr, self.thresholds) = roc_curve(y_true=self.test_y, y_score=pred)
+        (self.fpr, self.tpr, self.thresholds) = roc_curve(y_true=self.y_test, y_score=predictions)
         print('fpr, tpr, thresh check')
         self.fnr = 1- self.tpr
         print('fnr check')
         self.roc_auc = auc(self.fpr, self.tpr)
         print('roc_Auc check')
-        self.precision, self.recall, _ = precision_recall_curve(self.test_y, pred)
+        self.precision, self.recall, _ = precision_recall_curve(self.y_test, predictions)
         print('precision recall check')
         self.pr_auc = auc(self.recall, self.precision)
         print('pr_auc check')
@@ -512,10 +515,10 @@ class Ctbclass():
         plt.savefig('roc.png')
         
     def prcurve(self):
-        test_y=self.test_y
+        #y_test=self.y_test
         recall, precision, pr_auc = self.recall, self.precision, self.pr_auc
         # plot the precision-recall curves
-        no_skill = len(test_y[test_y==1]) / len(test_y)
+        no_skill = len(self.y_test[self.y_test==1]) / len(self.y_test)
         plt.figure(figsize = (16,8))
         plt.plot([0, 1], [no_skill, no_skill], color='navy', linestyle='--',
                  alpha=0.5)
@@ -549,6 +552,15 @@ class Ctbclass():
         plt.legend(loc="lower left", fontsize=16)
         plt.savefig('fpr-fnr.png')
         
+
+
+
+
+        
+
+
+
+
 
 
 

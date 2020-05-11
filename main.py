@@ -107,8 +107,11 @@ def main():
 
     ####### SASHA ######## ADD the CATBOOST Class (Vanilla class for training)
 	
-    model= Ctbclass(x_train, y_train,'random')   ##trains (tunes parameters)
-    model.test(x_test,y_test)  ## applies best parameters on the test data set
+    model= Ctbclass(x_train, y_train)
+    model.train(hyperparameter_optimizer='hyperopt')
+    model.test(x_test,y_test) 
+    predictions = model.predictions
+    
 
 
 
