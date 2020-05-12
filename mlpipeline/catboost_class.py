@@ -12,11 +12,6 @@ import matplotlib.pyplot as plt
 import catboost as cb
 from catboost import CatBoost
 import shap
-#from google.colab import files
-
-
-
-
 
 # random search
 PARAM_GRID = {
