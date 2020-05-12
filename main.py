@@ -96,23 +96,23 @@ def main():
     if algorithm == "ctb":
     
         model= Ctbclass(X_train, y_train)
-        model.train(hyperparameter_optimizer='hyperopt')
+        model.train(hyperparameter_optimizer=optimization)
         model.test(X_test, y_test) 
         predictions = model.predictions
 
     elif algorithm == "xgb":
 
-        model = XGBoostModel(X_train, y_train, max_evals=100, n_fold=5, 
+        model = XGBoostModel(X_train, y_train, max_evals=50, n_fold=5, 
                         num_boost_rounds=100, early_stopping_rounds=10,
                         seed=42, GPU=False)
-        model.train(optim_type='hyperopt')
+        model.train(optim_type=optimization)
         model.test(X_test, y_test)
         predictions = model.predictions
 
     else:
 
         model = lgbc.Lgbmclass(X_train, y_train)
-        model.train('hyperopt')
+        model.train(optimization)
         model.test(X_test, y_test)
         predictions = model.pred
 
