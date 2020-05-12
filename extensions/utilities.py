@@ -4,6 +4,7 @@ from __future__ import absolute_import
 from __future__ import print_function
 import pickle
 import pandas as pd
+from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
 from sklearn.preprocessing import StandardScaler
 import numpy as np
@@ -22,10 +23,12 @@ def load_data(path, sample_rate):
 	Returns:
 	df <dataframe> data_read
 	"""
-
+	df = pd.read_csv(path)
+	df = df.iloc[:, 1:]
+	df = df.sample(frac=sample_rate)
 	return df
 
-def create_test_train(self,df_data):
+def create_test_train(df_data):
 	"""
 	Create Test and train set
 
@@ -37,15 +40,11 @@ def create_test_train(self,df_data):
 	df_test <dataframe>: test set
 
 	"""
+	X = df_data.iloc[:, 1:]
+	y = df_data.iloc[:, 0]
+	X_train, X_test, y_train, y_test = train_test_split(X, y, stratify=y, test_size=0.3)
 
-	df_test = None
-	df_train = None
-
-	return df_train,df_test
-
-
-
-
+	return X_train, X_test, y_train, y_test
 
 def preprocess_train_test(df, training_flag=True):
 
