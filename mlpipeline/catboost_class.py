@@ -13,6 +13,18 @@ import catboost as cb
 from catboost import CatBoost
 import shap
 
+
+#GLOBAL HYPEROPT PARAMETERS
+N_FOLDS = 5 #number of cross-validation folds on data in each evaluation round
+MAX_EVALS = 30 #number of hyperopt evaluation rounds
+#CATBOOST PARAMETERS
+CB_MAX_DEPTH = 16 #maximum tree depth in CatBoost
+OBJECTIVE_CB_REG = 'MAE' #CatBoost regression metric
+OBJECTIVE_CB_CLASS = 'Logloss' #CatBoost classification metric
+NUM_BOOST_ROUNDS = 100
+EARLY_STOPPING_ROUNDS = 25
+SEED = 50
+
 # random search
 PARAM_GRID = {
     'l2_leaf_reg': list(range( 0, 2, 1)),
