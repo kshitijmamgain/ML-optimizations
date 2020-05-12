@@ -1,5 +1,5 @@
 *.csv
 *.ipynb
 *.pyc
-__*__
+__pycache__/
 *.png
