@@ -125,7 +125,7 @@ def main():
 
     ##### KShitij   #### LightGBM 
     model = lgbc.Lgbmclass(X_train, y_train)
-    model.parameter_tuning('hyperopt')
+    model.train('hyperopt')
     model.train(X_test, y_test)
 
     #### Tanaby #### Apply the test set and get the model evaluation results

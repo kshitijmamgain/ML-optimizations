@@ -96,11 +96,20 @@ class Lgbmclass():
         self.y_train = y_train
         self.train_set = lgb.Dataset(data=x_train, label=y_train)
 
-    def parameter_tuning(self, tune_type, diagnostic=False):
+    def train(self, op_type, diagnostic=False):
         '''
+        Trains the object with optimization type
+        Parameters
+        ----------
+        op_type: Type of optimization ('hyperopt', 'optuna' or 'random')
+        diagnostic: Bool (Default: False)
+        Returns
+        -------
+        diagnostic = False (default) -> Best parameters from optimization
+        diagnostic = True -> Trial list from optimization
         '''
         methodlist = ['hypeopt_space','optuna_space','random_space']
-        optim_type = tune_type + '_space'
+        optim_type = op_type + '_space'
         if optim_type not in methodlist:
             raise TypeError('Otimization type must have a valid space:',
                             '\n\t\t hyperopt, optuna or random')
@@ -305,7 +314,7 @@ class Lgbmclass():
         # Return list of results
         return [loss, params, iteration, n_estimators, run_time]
 
-    def train(self, x_test, y_test):
+    def test(self, x_test, y_test):
         """This function trains the model on best paramters and estimators
         
         Parameters
