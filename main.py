@@ -112,9 +112,6 @@ def main():
     model.test(X_test,y_test) 
     predictions = model.predictions
     
-
-
-
     ######   AHMAD #####   XGBOOST
     model = XGBoostModel(X_train, y_train, max_evals=10, n_fold=5, 
                         num_boost_rounds=100, early_stopping_rounds=10,
@@ -126,7 +123,8 @@ def main():
     ##### KShitij   #### LightGBM 
     model = lgbc.Lgbmclass(X_train, y_train)
     model.train('hyperopt')
-    model.train(X_test, y_test)
+    model.test(X_test, y_test)
+    predictions = model.pred
 
     #### Tanaby #### Apply the test set and get the model evaluation results
 
