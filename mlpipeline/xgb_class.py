@@ -120,8 +120,8 @@ class XGBoostModel():
                           metrics=space['eval_metric'],
                           seed=self.seed)
       end = timer()
-      cv_score = cv_results['test-logloss-mean'].iloc[-1]
-      cv_var = (cv_results['test-logloss-std'].iloc[-1])**2
+      cv_score = np.min(cv_results['test-logloss-mean'])
+      cv_var = np.min(cv_results['test-logloss-std'])**2
       n_estimators = int(np.argmin(cv_results['test-logloss-mean']) + 1)
       space['n_estimators'] = n_estimators
       results = {'loss': cv_score, 'variance': cv_var, 'params': space,
