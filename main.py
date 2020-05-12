@@ -3,7 +3,7 @@
 from mlpipeline.catboost_class import Ctbclass
 from mlpipeline.xgb_class import XGBoostModel
 from mlpipeline import lgbmclass as lgbc
-from mlpipline.evaluation import Model_Evaluation
+from mlpipeline.evaluations import Model_Evaluation
 import pandas as pd
 import logging
 import configparser
@@ -54,11 +54,11 @@ def _get_args():
                         help="maximum number of created features.")
 
     parser.add_argument("--algorithm",
-                        default="catboost",
-                        help="The algorithm to use for trainging")
+                        default="xgb",
+                        help="The algorithm to use for training")
 
     parser.add_argument("--optimization",
-                        default="hyperopt"
+                        default="hyperopt",
                         help="The optimization to use")
 
     return parser.parse_args()
@@ -68,8 +68,7 @@ def main():
     The main function, reads all parms, args and runs the train/test
 
     """
-	args = _get_args()
-
+    args = _get_args()
     numerical_f_path = args.numeric_columns
     categorical_f_path = args.categorical_columns
     data_path = args.data_path
@@ -80,17 +79,17 @@ def main():
     algorithm = args.algorithm
 
 	# Read the configuration file
-	config = json.load(open(config_path, 'r'))
+    # config = json.load(open(config_path, 'r'))
     
 
-	df_data = utilities.load_data(data_path)
-	logging.info(f'Dataframe of shape {df.shape} loaded')
+    df_data = utilities.load_data(data_path, sample_rate=0.001)
+    logging.info(f'Dataframe of shape {df_data.shape} loaded')
 
     # preprocess data
-    df_data = utilities.preprocess_train_test()
+    # df_data = utilities.preprocess_train_test()
 
     # create train-test dataset
-    train_data, test_data = utilities.create_test_train(df_data)
+    X_train, X_test, y_train, y_test = utilities.create_test_train(df_data)
 
     # start with model training:
 
@@ -98,12 +97,12 @@ def main():
     
         model= Ctbclass(X_train, y_train)
         model.train(hyperparameter_optimizer='hyperopt')
-        model.test(X_test,y_test) 
+        model.test(X_test, y_test) 
         predictions = model.predictions
 
     elif algorithm == "xgb":
 
-        model = XGBoostModel(X_train, y_train, max_evals=10, n_fold=5, 
+        model = XGBoostModel(X_train, y_train, max_evals=100, n_fold=5, 
                         num_boost_rounds=100, early_stopping_rounds=10,
                         seed=42, GPU=False)
         model.train(optim_type='hyperopt')
@@ -124,11 +123,11 @@ def main():
     me.set_label_scores(predictions,y_test)
 
     roc_filename  = "roc_" + algorithm + "_" + optimization +".jpg"
-    roc_filename = os.path.join("figs",roc_filename)
+    roc_filename = os.path.join("figs", roc_filename)
     pr_filename  = "pr_" + algorithm + "_" + optimization +".jpg"
-    pr_filename = os.path.join("figs",pr_filename)
+    pr_filename = os.path.join("figs", pr_filename)
     fpr_fnr_filename = "fpr_fnr_" + "_" + algorithm + "_" + optimization +".jpg"
-    fpr_fnr_filename = os.path.join("figs",fpr_fnr_filename)
+    fpr_fnr_filename = os.path.join("figs", fpr_fnr_filename)
 
     results = me.get_metrics(roc_filename,
                    pr_filename,
