@@ -54,7 +54,7 @@ def _get_args():
                         help="maximum number of created features.")
 
     parser.add_argument("--algorithm",
-                        default="xgb",
+                        default="ctb",
                         help="The algorithm to use for training")
 
     parser.add_argument("--optimization",

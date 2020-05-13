@@ -82,7 +82,7 @@ H_SPACE = {
 class Ctbclass():
     '''Catboost Class applying Hyperopt and Optuna techniques '''
     iteration = 0
-    def __init__(self, X_train, y_train , lossguide_verifier = False , GPU = True):
+    def __init__(self, X_train, y_train , lossguide_verifier = False , GPU = False):
         '''Initializes Catboost Train dataset object
         Parameters
         ----------
@@ -228,8 +228,8 @@ class Ctbclass():
             params['grow_policy'] = params['grow_policy']['grow_policy']
             print(params['grow_policy'])
 
-        if self.GPU == False:
-            params['taks_type'] = 'CPU'
+        # if self.GPU == False:
+        #     params['task_type'] = 'CPU'
 
         # for parameter_name in ['l2_leaf_reg', 'depth', 'border_count']:
         #     params[parameter_name] = int(params[parameter_name])
