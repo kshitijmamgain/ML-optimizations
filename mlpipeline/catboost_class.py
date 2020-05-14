@@ -16,13 +16,13 @@ import shap
 
 #GLOBAL HYPEROPT PARAMETERS
 N_FOLDS = 5 #number of cross-validation folds on data in each evaluation round
-MAX_EVALS = 30 #number of hyperopt evaluation rounds
+MAX_EVALS = 50 #number of hyperopt evaluation rounds
 #CATBOOST PARAMETERS
 CB_MAX_DEPTH = 16 #maximum tree depth in CatBoost
 OBJECTIVE_CB_REG = 'MAE' #CatBoost regression metric
 OBJECTIVE_CB_CLASS = 'Logloss' #CatBoost classification metric
-NUM_BOOST_ROUNDS = 100
-EARLY_STOPPING_ROUNDS = 25
+NUM_BOOST_ROUNDS = 10
+EARLY_STOPPING_ROUNDS = 2
 SEED = 50
 
 # random search
@@ -54,7 +54,7 @@ H_SPACE = {
     'border_count': hp.quniform('border_count', 32, 128, 1),
     'bootstrap_type': hp.choice('bootstrap_type', 
                                 [{'bootstrap_type': 'Bayesian', 
-                                  'bagging_temperature': hp.loguniform('bagging_temperature', np.log(1), np.log(50))},
+                                  'bagging_temperature': hp.loguniform('bagging_temperature', np.log(1), np.log(5e5))},
                                  {'bootstrap_type': 'Bernoulli'}]),
     'grow_policy': hp.choice('grow_policy', 
                             [{'grow_policy': 'SymmetricTree'}, {'grow_policy': 'Depthwise'},
@@ -62,20 +62,12 @@ H_SPACE = {
                               'max_leaves': hp.quniform('max_leaves', 2, 32, 1)}]),
 
     'custom_loss' : hp.choice('custom_loss', ['AUC','F1','TotalF1','CrossEntropy','Logloss']),
-    # The score type used to select the next split during the tree construction
     'score_function': hp.choice('score_function', ['Cosine','L2']),
-    # Eval_metric helps to detect overfitting
     'eval_metric': hp.choice('eval_metric', ['AUC']),
     'min_data_in_leaf': hp.quniform('min_data_in_leaf', 1, 50, 1),
-    #'random_strength': hp.loguniform('random_strength', np.log(0.005), np.log(5)),
-    #'rsm': hp.uniform('rsm', 0.1, 1),
-    # RSM :Random subspace method. The percentage of features to use at each split selection
     'od_type': hp.choice('od_type', ['IncToDec', 'Iter']),
     'task_type' : 'CPU',
     'leaf_estimation_backtracking': hp.choice('leaf_estimation_backtracking', ['No', 'AnyImprovement'])
-    #'boosting_type':hp.choice('boosting_type',['Ordered','Plain']),
-    #boosting_type depends on symmetricality of the grow_policy
-    #Ordered for small dataset requiring high accuracy, Plain for large data sets requiring processing speed
     }
 
 
@@ -90,18 +82,11 @@ class Ctbclass():
         y_train: label data
         switch: GPU processing Vs CPU'''
         self.GPU = GPU
-        #self.switch = switch
         self.X_train = X_train
         self.y_train = y_train
-        #self.optimization_method = optimization_method
-        
-        
         self.lossguide_verifier = lossguide_verifier
-        
-        #self.optuna_results = pd.DataFrame(columns=)
         self.train_set = cb.Pool(self.X_train, self.y_train)
-        
-        
+            
     def ctb_crossval(self, params, optim_type):
         '''catboost cross validation model
         Paramters
@@ -114,11 +99,6 @@ class Ctbclass():
         # initializing the timer
          
         start = timer()
-        # if optim_type == 'Optuna':
-        #     cv_results = cb.cv(self.train_set, params, fold_count=N_FOLDS, num_boost_round=NUM_BOOST_ROUNDS,
-        #                    early_stopping_rounds=EARLY_STOPPING_ROUNDS, stratified=True, partition_random_seed=SEED,
-        #                    plot=True)
-        # else:
         
         cv_results = cb.cv(self.train_set, params, fold_count=N_FOLDS,
                            num_boost_round=NUM_BOOST_ROUNDS,
@@ -136,6 +116,7 @@ class Ctbclass():
         self.estimator = n_estimators
         print(params)
         return loss, params, n_estimators, run_time
+
     def train(self, hyperparameter_optimizer):
         self.hyperparameter_optimizer = hyperparameter_optimizer
         if self.hyperparameter_optimizer == 'hyperopt':
@@ -144,6 +125,9 @@ class Ctbclass():
             return self.optuna_space()
         if self.hyperparameter_optimizer == 'random_search':
             return self.random_space()
+        else:
+            raise Exception ('Please choose one of hyperopt, optuna, random_search choices')        
+
     def hyperopt_space(self):
         '''A method to call the hyperopt optimization
         Parameters
@@ -157,28 +141,16 @@ class Ctbclass():
         result: best parameter that minimizes the fn_name over max_evals = MAX_EVALS 
         trials: the database in which to store all the point evaluations of the search'''
         fn_name, space, algo, trials='hyperopt_obj', H_SPACE, tpe.suggest, Trials()
-        
-        # score_function_list0=hp.choice('score_function',['L2', 'Cosine'])
-        # score_function_list1=hp.choice('score_function',['L2', 'SolarL2', 'LOOL2', 'NewtonL2'])
-        # score_function_list2=hp.choice('score_function',['L2', 'SolarL2', 'LOOL2', 'NewtonL2', 'Cosine'])
         if self.GPU == False:
             space.update({'rsm': hp.uniform('rsm', 0.1, 1),
                           'random_strength': hp.loguniform('random_strength', 
                                                            np.log(0.005), np.log(5))})
         if self.GPU == True:
-            space.update({'leaf_estimation_backtracking' : hp.choice ('leaf_estimation_backtracking',['Armijo', 'No', 'AnyImprovement'])})
-            
-        # else:
-        #     space.update({'score_function': hp.choice('score_function',
-        #                                                ['L2', 'SolarL2', 'LOOL2', 'NewtonL2','Cosine']),'thread_count': 2})
-            
-
+            space.update({'leaf_estimation_backtracking' : hp.choice ('leaf_estimation_backtracking',['Armijo', 'No', 'AnyImprovement'])}  
         if (self.lossguide_verifier == True) and (self.GPU == True):
             space.update({'score_function': hp.choice('score_function',['L2', 'SolarL2', 'LOOL2', 'NewtonL2']),'thread_count': 2})
         if (self.lossguide_verifier == False) and (self.GPU == True):
             space.update({'score_function': hp.choice('score_function',['Cosine', 'L2', 'SolarL2', 'LOOL2', 'NewtonL2']),'thread_count': 2})
-
-
         fn = getattr(self, fn_name)
         try:
             result = fmin(fn=fn, space= space, algo= algo, max_evals= MAX_EVALS,
@@ -199,46 +171,25 @@ class Ctbclass():
         if self.GPU == True:
             params['task_type'] = 'GPU'
         if params['bootstrap_type']['bootstrap_type'] == 'Bayesian':
-            #print(params['bootstrap_type'])
             params['bagging_temperature'] = params['bootstrap_type']['bagging_temperature']
-            #print(params['bagging_temperature'])
             params['bootstrap_type'] = params['bootstrap_type']['bootstrap_type']
-            #print(params['bootstrap_type'])
         else:
             params['bootstrap_type'] = params['bootstrap_type']['bootstrap_type']
-            #print(params['bootstrap_type'])
         if params['grow_policy']['grow_policy'] == 'Lossguide':
-            #self.veifier = True
             params['max_leaves'] = params['grow_policy']['max_leaves']
-            #print(params['max_leaves'])
             params['grow_policy'] = params['grow_policy']['grow_policy']
             if self.GPU == False:
               params['score_function'] = 'L2'
             else:
-              self.lossguide_verifier =True
-              #params['score_function'] = ['Cosine','L2']
-               # ['L2', 'SolarL2', 'LOOL2', 'NewtonL2']
-            #     # space.update({'score_function': hp.choice('score_function',
-            #                                            ['L2', 'SolarL2', 'LOOL2', 'NewtonL2'])})
-            
-                
-            
+              self.lossguide_verifier =True          
   
         else:
             params['grow_policy'] = params['grow_policy']['grow_policy']
             print(params['grow_policy'])
-
-        # if self.GPU == False:
-        #     params['task_type'] = 'CPU'
-
-        # for parameter_name in ['l2_leaf_reg', 'depth', 'border_count']:
-        #     params[parameter_name] = int(params[parameter_name])
-        
         
         # Perform n_folds cross validation
         loss, params, n_estimators, run_time = self.ctb_crossval(params, optim_type)
-
-        # Dictionary with information for evaluation
+	# Dictionary with information for evaluation
         return {'loss':loss, 'params':params, 'iteration':self.iteration,
                 'estimators':n_estimators, 'train_time':run_time, 'status':STATUS_OK}
 
@@ -279,9 +230,7 @@ class Ctbclass():
                                                     ['Bayesian', 'Bernoulli']), 
         'grow_policy': trial.suggest_categorical('grow_policy', list_grow_policy),
         'score_function': trial.suggest_categorical('score_function', list_score_function),
-        #'score_function': 'Cosine',
         'eval_metric': trial.suggest_categorical('eval_metric', ['AUC']),
-        #'eval_metric': trial.suggest_categorical('eval_metric', ['F1', 'AUC']),
         'min_data_in_leaf': trial.suggest_int('min_data_in_leaf', 1, 50, 1),
         'od_type': trial.suggest_categorical('od_type', ['IncToDec', 'Iter']),
         'task_type': trial.suggest_categorical('task_type',list_task_type),
@@ -295,38 +244,18 @@ class Ctbclass():
           params['random_strength'] = trial.suggest_uniform('random_strength', 
                                                             np.log(0.005), np.log(5))
           params['rsm'] = trial.suggest_uniform('rsm', 0.1, 1)
-
-        if params['grow_policy'] == 'Lossguide':
-          params['max_leaves'] = trial.suggest_int('max_leaves', 2, 32)
-          
+	if params['grow_policy'] == 'Lossguide':
+          params['max_leaves'] = trial.suggest_int('max_leaves', 2, 32)  
         if params['grow_policy'] == 'Lossguide' and self.GPU == False:
           list_score_function = ['L2']
-
         if params['grow_policy'] == 'Lossguide' and self.GPU == True:
           list_score_function = ['L2', 'NewtonL2','SolarL2', 'LOOL2' ]
-          
         if params['bootstrap_type'] == 'Bayesian':
           params['bagging_temperature'] = trial.suggest_uniform('bagging_temperature',
                                                                 np.log(1), np.log(50))
-          
-
-        # if params['grow_policy'] == 'Lossguide' and params['task_type'] == 'GPU':
-        #   params['score_function'] = trial.suggest_categorical('score_function',['L2','SolarL2','LOOL2','NewtonL2'])
-        # elif params['grow_policy'] == 'Lossguide' and params['task_type'] == 'CPU':
-        #   params['score_function'] = trial.suggest_categorical('score_function',['L2'])
-        # elif params['grow_policy'] != 'Lossguide' and params['task_type'] == 'GPU':
-        #   params['score_function'] = trial.suggest_categorical('score_function',['L2','SolarL2','LOOL2','NewtonL2','Cosine'])
-        # else:
-        #   params['score_function'] = trial.suggest_categorical('score_function',['Cosine','L2'])
-            
-        #for parameter_name in ['l2_leaf_reg', 'depth', 'border_count']:
-         #   params[parameter_name] = int(params[parameter_name])
-        
         loss, params, _, _ = self.ctb_crossval(params, optim_type)
         print(params)
-
-        return loss
-
+	return loss
 
     def random_space(self):
         '''Random search space'''
@@ -335,22 +264,15 @@ class Ctbclass():
         space = PARAM_GRID
         random_results = pd.DataFrame(columns=['loss', 'params', 'iteration', 'estimators',
                                                'time'], index=list(range(MAX_EVALS)))
-        
         if self.GPU == False:
             space.update({'rsm' : list(np.linspace(0.1, 1.0)),
-                          'random_strength': list(np.logspace(np.log(0.005), np.log(5), base=np.exp(1), num=1000))})
-            
+                          'random_strength': list(np.logspace(np.log(0.005), np.log(5), base=np.exp(1), num=1000))}) 
         if self.GPU == True:
             space.update({'leaf_estimation_backtracking' : ['Armijo', 'No', 'AnyImprovement'],'thread_count' :[2]})
-            
-
-          
         if (self.lossguide_verifier == True) and (self.GPU == True):
              space.update({'score_function': ['L2', 'SolarL2', 'LOOL2', 'NewtonL2']})
         if (self.lossguide_verifier == False) and (self.GPU == True):
              space.update({'score_function': ['Cosine', 'L2', 'SolarL2', 'LOOL2', 'NewtonL2']})
-
-
 
         # Iterate through the specified number of evaluations
         for i in range(MAX_EVALS):
@@ -373,52 +295,40 @@ class Ctbclass():
         optim_type = 'Random'
         self.iteration += 1
         random.seed(SEED) ##For True Randomized Search deactivate the fixated SEED
-
-        if self.GPU == True:
+	if self.GPU == True:
             params['task_type'] = 'GPU'
-        
         if self.GPU == False:
             params['task_type'] = 'CPU'
-        
-        
-
         bagging_temperature_dist = list(np.logspace(np.log(1), np.log(50), base=np.exp(1), num=1000))
         if params['bootstrap_type'] == 'Bayesian':
             params['bagging_temperature'] = random.sample(bagging_temperature_dist,1)[0]
-
-        max_leaves_dist = list(range( 2, 32, 1))
+	max_leaves_dist = list(range( 2, 32, 1))
         if params['grow_policy'] == 'Lossguide':
             params['max_leaves'] = random.sample(max_leaves_dist,1)[0] 
             if self.GPU == False:
                 params['score_function'] = 'L2'
             else:
                 self.lossguide_verifier = True
-
         # Perform n_folds cross validation
-
         loss, params, n_estimators, run_time = self.ctb_crossval(params, optim_type)
 
         # Return list of results
         return [loss, params,iteration, n_estimators, run_time]
-
 
     def test(self, X_test, y_test):
         """This function evaluates the model on paramters and estimators
         Parameters
         ----------
         x_test: test set; y_test: test label"""
-        #self.train(self.hyperparameter_optimizer)
-        #self.test_set = cb.Pool(x_test, y_test)
         self.cat = cb.train(params=self.params, pool=self.train_set)
-        self.predictions = self.cat.predict(X_test,prediction_type="Class")
-        self.y_test = y_test
+        self.predictions = self.cat.predict(X_test,prediction_type="Probability")
+        self.predictions = self.predictions [:,1]
+	self.y_test = y_test
         self.X_test = X_test
         print("Model will be trained with best parameters obtained from your choice of optimization model ... \n\n\n")
         print("Model trained with {} estimators on the following parameters: \n{}".format(self.estimator, self.params))
         
-
     def shap_summary(self):
-        #x_test=self.x_test
         z=shap.sample(self.X_test,nsamples = 100)
         explainer=shap.KernelExplainer(self.cat.predict,z)
         k_shap_values = explainer.shap_values(self.X_test)
@@ -429,26 +339,18 @@ class Ctbclass():
         
     def shap_collective(self):
         shap.initjs()
-        #x_test=self.x_test
         z=shap.sample(self.X_test,nsamples=100)
         explainer=shap.KernelExplainer(self.cat.predict,z)
         k_shap_values = explainer.shap_values(self.X_test)
-        
-        return shap.force_plot(explainer.expected_value, k_shap_values, X_test)
-        #plt.clf()
-        #plt.savefig('shap_collective.png')
+        return shap.force_plot(explainer.expected_value, k_shap_values, self.X_test)
 
     def performance(self):
-        #y_test=self.y_test
         y_test=np.array(self.y_test)
-        predictions=self.predictions
-                
+        predictions=self.predictions        
         # Confusion matrix
         print(confusion_matrix(y_test, predictions))
-
-        # Accuracy, Precision, Recall, F1 score
+	# Accuracy, Precision, Recall, F1 score
         print(classification_report(y_test, predictions))
-
 
     def evaluate(self):
         """This function generates the evaluation report for the model"""
@@ -490,7 +392,6 @@ class Ctbclass():
         plt.savefig('roc.png')
         
     def prcurve(self):
-        #y_test=self.y_test
         recall, precision, pr_auc = self.recall, self.precision, self.pr_auc
         # plot the precision-recall curves
         no_skill = len(self.y_test[self.y_test==1]) / len(self.y_test)
@@ -527,16 +428,6 @@ class Ctbclass():
         plt.legend(loc="lower left", fontsize=16)
         plt.savefig('fpr-fnr.png')
         
-
-
-
-
-
-
-
-
-        
-
 
 
 
