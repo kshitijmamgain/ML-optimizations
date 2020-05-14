@@ -339,7 +339,7 @@ class Lgbmclass():
         self.pred = self.gbm.predict(x_test)
         print("Model will be trained with best parameters obtained from {} ... \n\n\n".format(optim_type))
         print("Model trained on the following parameters: \n{}".format(best))
-        print('Plotting feature importances...')
+        '''print('Plotting feature importances...')
         ax = lgb.plot_importance(self.gbm, max_num_features=10)
-        plt.savefig('feature_importance.png')
+        plt.savefig('feature_importance.png')'''
         return self.pred

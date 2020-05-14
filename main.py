@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-from mlpipeline.catboost_class import Ctbclass
+#from mlpipeline.catboost_class import Ctbclass
 from mlpipeline.xgb_class import XGBoostModel
 from mlpipeline import lgbmclass as lgbc
 from mlpipeline.evaluations import Model_Evaluation
@@ -54,7 +54,7 @@ def _get_args():
                         help="maximum number of created features.")
 
     parser.add_argument("--algorithm",
-                        default="ctb",
+                        default="lgb",
                         help="The algorithm to use for training")
 
     parser.add_argument("--optimization",
@@ -82,8 +82,9 @@ def main():
     # config = json.load(open(config_path, 'r'))
     
 
-    df_data = utilities.load_data(data_path, sample_rate=0.001)
-    logging.info(f'Dataframe of shape {df_data.shape} loaded')
+    df_data = utilities.load_data(data_path, sample_rate=0.01)
+    print("DF loaded")
+    #logging.info(f'Dataframe of shape {df_data.shape} loaded')
 
     # preprocess data
     # df_data = utilities.preprocess_train_test()
@@ -122,11 +123,11 @@ def main():
     me = Model_Evaluation() 
     me.set_label_scores(predictions,y_test)
 
-    roc_filename  = "roc_" + algorithm + "_" + optimization +".jpg"
+    roc_filename  = "roc_" + algorithm + "_" + optimization +".png"
     roc_filename = os.path.join("figs", roc_filename)
-    pr_filename  = "pr_" + algorithm + "_" + optimization +".jpg"
+    pr_filename  = "pr_" + algorithm + "_" + optimization +".png"
     pr_filename = os.path.join("figs", pr_filename)
-    fpr_fnr_filename = "fpr_fnr_" + "_" + algorithm + "_" + optimization +".jpg"
+    fpr_fnr_filename = "fpr_fnr_" + "_" + algorithm + "_" + optimization +".png"
     fpr_fnr_filename = os.path.join("figs", fpr_fnr_filename)
 
     results = me.get_metrics(roc_filename,
@@ -149,16 +150,12 @@ def main():
 if __name__ == "__main__":
     args = _get_args()
     log_filename = args.log_path
+    
     os.makedirs(os.path.dirname(log_filename), exist_ok=True)
-    os.makedirs("figs")
+    try:
+        os.makedirs("figs")
+    except OSError as exc:
+        print('saving results in figs folder')
+        
     logging.basicConfig(filename=log_filename, filemode='w+', level=logging.INFO)
     main()
-
-
-
-
-
-
-
-
-
