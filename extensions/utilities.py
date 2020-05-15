@@ -24,7 +24,7 @@ def load_data(path, sample_rate):
 	df <dataframe> data_read
 	"""
 	df = pd.read_csv(path)
-	df = df.iloc[:, 1:]
+	df = df.iloc[:, 1:-7]
 	df = df.sample(frac=sample_rate)
 	return df
 
