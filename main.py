@@ -79,7 +79,6 @@ def main():
 
     """
     args = _get_args()
-    numerical_f_path = args.numeric_columns
     categorical_f_path = args.categorical_columns
     data_path = args.data_path
     config_path = args.config_path
