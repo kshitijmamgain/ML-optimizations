@@ -187,7 +187,7 @@ class XGBoostModel():
                          {'tree_method': 'hist',
                           'max_bin': max_bin},
                          {'tree_method': 'approx',
-                          'sketch_eps': hp.quniform('sketch_eps', 0, 1, 0.05)}]
+                          'sketch_eps': hp.uniform('sketch_eps', 0.01, 0.99)}]
           subsample = hp.uniform('subsample', 0.5, 1)
 
         params = {
@@ -409,7 +409,7 @@ class XGBoostModel():
                                                      [2**7, 2**8, 2**9, 2**10])
 
         if space['tree_method'] == 'approx':
-            space['sketch_eps'] = trial.suggest_uniform('sketch_eps', 0, 1)
+            space['sketch_eps'] = trial.suggest_uniform('sketch_eps', 0.01, 0.99)
 
         if space['tree_method'] == 'gpu_hist':
             space['single_precision_histogram'] = trial.suggest_categorical(
@@ -550,7 +550,7 @@ class XGBoostModel():
           param.update({'max_bin': [2**7, 2**8, 2**9, 2**10]})
 
         if param_sample['tree_method'] == 'approx':
-          param.update({'sketch_eps': np.arange(0, 1, 0.05)})
+          param.update({'sketch_eps': np.arange(0.01, 0.99, 0.01)})
 
         if param_sample['tree_method'] == 'gpu_hist':
           param.update({'max_bin': [2**7, 2**8, 2**9, 2**10]})
@@ -631,8 +631,7 @@ class XGBoostModel():
                                                        'method before testing')
       self.X_test, self.y_test = x_test, y_test
       self.dtest = xgb.DMatrix(x_test, label=self.y_test)
-      self.predictions = self.best_model.predict(self.dtest, 
-                                          ntree_limit=self.num_boost_rounds)
+      self.predictions = self.best_model.predict(self.dtest)
       score = log_loss(self.y_test, np.float64(self.predictions))
       self.output[self.optim_type]['score'] = score
  
