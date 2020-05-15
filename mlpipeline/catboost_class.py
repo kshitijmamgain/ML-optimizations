@@ -146,7 +146,7 @@ class Ctbclass():
                           'random_strength': hp.loguniform('random_strength', 
                                                            np.log(0.005), np.log(5))})
         if self.GPU == True:
-            space.update({'leaf_estimation_backtracking' : hp.choice ('leaf_estimation_backtracking',['Armijo', 'No', 'AnyImprovement'])}  
+            space.update({'leaf_estimation_backtracking' : hp.choice ('leaf_estimation_backtracking',['Armijo', 'No', 'AnyImprovement'])})  
         if (self.lossguide_verifier == True) and (self.GPU == True):
             space.update({'score_function': hp.choice('score_function',['L2', 'SolarL2', 'LOOL2', 'NewtonL2']),'thread_count': 2})
         if (self.lossguide_verifier == False) and (self.GPU == True):
@@ -241,21 +241,21 @@ class Ctbclass():
         optim_type = 'Optuna'
         self.iteration += 1
         if self.GPU == False:
-          params['random_strength'] = trial.suggest_uniform('random_strength', 
+            params['random_strength'] = trial.suggest_uniform('random_strength', 
                                                             np.log(0.005), np.log(5))
-          params['rsm'] = trial.suggest_uniform('rsm', 0.1, 1)
-	if params['grow_policy'] == 'Lossguide':
-          params['max_leaves'] = trial.suggest_int('max_leaves', 2, 32)  
-        if params['grow_policy'] == 'Lossguide' and self.GPU == False:
-          list_score_function = ['L2']
-        if params['grow_policy'] == 'Lossguide' and self.GPU == True:
-          list_score_function = ['L2', 'NewtonL2','SolarL2', 'LOOL2' ]
+            params['rsm'] = trial.suggest_uniform('rsm', 0.1, 1)
+        if params['grow_policy'] == 'Lossguide':
+            params['max_leaves'] = trial.suggest_int('max_leaves', 2, 32)  
+        if (params['grow_policy'] == 'Lossguide') and (self.GPU == False):
+            list_score_function = ['L2']
+        if (params['grow_policy'] == 'Lossguide') and (self.GPU == True):
+            list_score_function = ['L2', 'NewtonL2','SolarL2', 'LOOL2' ]
         if params['bootstrap_type'] == 'Bayesian':
-          params['bagging_temperature'] = trial.suggest_uniform('bagging_temperature',
+            params['bagging_temperature'] = trial.suggest_uniform('bagging_temperature',
                                                                 np.log(1), np.log(50))
         loss, params, _, _ = self.ctb_crossval(params, optim_type)
         print(params)
-	return loss
+        return loss
 
     def random_space(self):
         '''Random search space'''
@@ -295,14 +295,14 @@ class Ctbclass():
         optim_type = 'Random'
         self.iteration += 1
         random.seed(SEED) ##For True Randomized Search deactivate the fixated SEED
-	if self.GPU == True:
+        if self.GPU == True:
             params['task_type'] = 'GPU'
         if self.GPU == False:
             params['task_type'] = 'CPU'
-        bagging_temperature_dist = list(np.logspace(np.log(1), np.log(50), base=np.exp(1), num=1000))
+            bagging_temperature_dist = list(np.logspace(np.log(1), np.log(50), base=np.exp(1), num=1000))
         if params['bootstrap_type'] == 'Bayesian':
             params['bagging_temperature'] = random.sample(bagging_temperature_dist,1)[0]
-	max_leaves_dist = list(range( 2, 32, 1))
+            max_leaves_dist = list(range( 2, 32, 1))
         if params['grow_policy'] == 'Lossguide':
             params['max_leaves'] = random.sample(max_leaves_dist,1)[0] 
             if self.GPU == False:
@@ -323,7 +323,7 @@ class Ctbclass():
         self.cat = cb.train(params=self.params, pool=self.train_set)
         self.predictions = self.cat.predict(X_test,prediction_type="Probability")
         self.predictions = self.predictions [:,1]
-	self.y_test = y_test
+        self.y_test = y_test
         self.X_test = X_test
         print("Model will be trained with best parameters obtained from your choice of optimization model ... \n\n\n")
         print("Model trained with {} estimators on the following parameters: \n{}".format(self.estimator, self.params))
