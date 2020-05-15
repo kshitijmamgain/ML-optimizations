@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-#from mlpipeline.catboost_class import Ctbclass
+from mlpipeline.catboost_class import Ctbclass
 from mlpipeline.xgb_class import XGBoostModel
 from mlpipeline import lgbmclass as lgbc
 from mlpipeline.evaluations import Model_Evaluation
@@ -23,43 +23,53 @@ def _get_args():
     """Get input arguments."""
     parser = argparse.ArgumentParser(
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument("--numeric_columns",
-                        default="data/numerical_features.json",
-                        help="path to numeric data.")
 
     parser.add_argument("--categorical_columns",
                         default="data/categorical_features.json",
-                        help="path to categorical data.")
+                        help="path to categorical data.",
+                        type=str)
 
     parser.add_argument("--save_path",
                         default="model",
-                        help="path to encoder and model.")
+                        help="path to encoder and model.",
+                        type=str)
 
     parser.add_argument("--data_path",
                         default="data/higgs_data.csv",
-                        help="Path to  higgs_data")
+                        help="Path to  higgs_data",
+                        type=str)
 
     parser.add_argument("--config_path",
                         default="config.json",
-                        help="path to configfile  path.")
+                        help="path to configfile  path.",
+                        type=str)
+
     parser.add_argument("--result_path",
                         default="results/",
-                        help="path to result path.")
+                        help="path to result path.",
+                        type=str)
 
     parser.add_argument("--log_path",
                         default="log/higgs_project.log",
-                        help="path to log path.")
+                        help="path to log path.",
+                        type=str)
+
     parser.add_argument("--featureset_max_num",
                         default="17",
-                        help="maximum number of created features.")
+                        help="maximum number of created features.",
+                        type=int)
 
     parser.add_argument("--algorithm",
                         default="lgb",
-                        help="The algorithm to use for training")
+                        help="The algorithm to use for training",
+                        type=str,
+                        choices=['xgb', 'ctb', 'lgb'])
 
     parser.add_argument("--optimization",
                         default="hyperopt",
-                        help="The optimization to use")
+                        help="The optimization to use",
+                        type=str,
+                        choices=['hyperopt', 'optuna', 'random_search'])
 
     return parser.parse_args()
 
@@ -83,8 +93,7 @@ def main():
     
 
     df_data = utilities.load_data(data_path, sample_rate=0.01)
-    print("DF loaded")
-    #logging.info(f'Dataframe of shape {df_data.shape} loaded')
+    logging.info('Dataframe of shape {} loaded'.format(df_data.shape))
 
     # preprocess data
     # df_data = utilities.preprocess_train_test()
@@ -110,13 +119,12 @@ def main():
         model.test(X_test, y_test)
         predictions = model.predictions
 
-    else:
+    elif algorithm == 'lgb':
 
         model = lgbc.Lgbmclass(X_train, y_train)
         model.train(optimization)
         model.test(X_test, y_test)
         predictions = model.pred
-
 
     #### Apply the test set and get the model evaluation results
 
@@ -135,7 +143,8 @@ def main():
                    fpr_fnr_filename,
                    algorithm)
 
-    if  not results: raise Exception("no results generated! please check!")
+    if  not results:
+        raise Exception("no results generated! please check!")
     else:  ### Print the results #### 
         logging.info("results generated, will be printing the results")
         print ("*" * 100)
