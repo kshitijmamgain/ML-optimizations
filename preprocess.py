@@ -22,10 +22,9 @@ class Preprocessor():
     It relies on 'dask' library for parallel computing and as a result, can handle large datasets.
     """
     
-    def __init__(self, numeric_features, target_feature, train_dataframe, test_dataframe = None, categorical_features = None,
-                drop_threshold = 50, category_threshold = 1, missing_method = 'fill',
-                scale_method = 'standardscaler', scale_range = (0, 1),
-                transform_method = 'yeo-johnson'):
+    def __init__(self, numeric_features, target_feature, train_dataframe, labels, test_dataframe = None,
+                 categorical_features = None, drop_threshold = 50, category_threshold = 1, missing_method = 'fill',
+                 scale_method = 'standardscaler', scale_range = (0, 1), transform_method = 'yeo-johnson'):
         
         """
         Initializes an instance of the Preprocessor class.
@@ -43,8 +42,10 @@ class Preprocessor():
             A dataframe containing training data
         test_df: a Dask Dataframe, default = None
             A dataframe containing the testing data
-        drop_threshold : int, default = 50
+        drop_threshold: int, default = 50
             Percentage of missing values in a feature below which a column will be dropped
+        labels: list of strings
+            A list containing the expected labels in the target feature
         category_threshold: integer
             Count of categories below which (or equal) a category will be grouped together as 'Other' for a categorical feature
         missing_method: string
@@ -72,6 +73,7 @@ class Preprocessor():
         self.numeric_features = numeric_features
         self.categorical_features = categorical_features
         self.train_df = train_dataframe
+        self.labels = labels
         self.test_df = test_dataframe
         self.drop_threshold = drop_threshold
         self.category_threshold = category_threshold
@@ -84,8 +86,14 @@ class Preprocessor():
         
         
         print('Preprocessor ready...')
+    
+    def convert_invalid_to_NaN(self, row):
+        try:
+            return float(row)
+        except:
+            return np.nan
         
-    def remove_duplicates(self, df):
+    def remove_invalid_duplicates(self, df):
         
         """
         Method that finds AND removes duplicated observations in a dataframe
@@ -101,8 +109,11 @@ class Preprocessor():
             A dataframe with duplicates, if any, are removed.
         
         """
-        
+        for num in self.numeric_features:
+            df[num] = dd.to_numeric(df[num], errors='coerce')
+        df= df[df[self.target_feature].isin(list((map(str, self.labels))))]
         df = df.drop_duplicates()
+        self.df = df
         return df
     
     def encode_target(self, df):
@@ -121,10 +132,9 @@ class Preprocessor():
             A dataframe with the target feature encoded
         
         """
-        
         enc = dask_ml.preprocessing.LabelEncoder()
         df[self.target_feature] = enc.fit_transform(df[self.target_feature])
-        
+        self.df = df
         return df
     
     def remove_missing_values(self, df):
@@ -148,10 +158,11 @@ class Preprocessor():
         if self.missing_method not in ['fill', 'drop']:
             raise ValueError("method must be one of: fill, drop")
         
-        try:
-            int(self.drop_threshold)
-        except:
-            raise TypeError("Threshold value must be numeric")
+        if self.drop_threshold!=None:
+            try:
+                int(self.drop_threshold)
+            except:
+                raise TypeError("Threshold value must be numeric or None")
             
         if isinstance(self.category_threshold, int):
             pass
@@ -169,24 +180,28 @@ class Preprocessor():
                     percent_missing = ((missing/df.index.size)*100).compute()
                     drop_list = list(percent_missing[percent_missing > self.drop_threshold].index)
                     df = df.drop(drop_list, axis = 1)
-   
-        #NUMERIC COLUMNS
-        
-                if df[self.numeric_features].isnull().sum().any().compute():
+                    self.numeric_features = [i for i in self.numeric_features if i not in drop_list]
+                    self.categorical_features = [i for i in self.categorical_features if i not in drop_list]
+                #NUMERIC COLUMNS
+                if df[self.numeric_features].isnull().sum().any().compute(): 
                     means = df[self.numeric_features].mean().compute()
                     df[self.numeric_features] = df[self.numeric_features].fillna(means)
-
             
-        #CATEGORICAL COLUMNS
-                if df[self.categorical_features].isna().sum().any().compute():
-                    for i in list(self.categorical_features):
-                        category_count = df[i].value_counts().compute()
-                        mode = category_count.index[0]
-                        df[i] = df[i].fillna(mode)
-                        distinct = list(category_count[category_count <= self.category_threshold].index)
-                        df[i] = df[i].replace(distinct, 'Other')
+                #CATEGORICAL COLUMNS
+                if self.categorical_features != None:
+                    category_count = None
+                    if df[self.categorical_features].isna().sum().any().compute():
+                        for i in list(self.categorical_features):
+                            category_count = df[i].value_counts().compute()
+                            mode = category_count.index[0]
+                            df[i] = df[i].fillna(mode)
+                    if category_count==None:
+                        for i in list(self.categorical_features):
+                            category_count = df[i].value_counts().compute()
+                            distinct = list(category_count[category_count <= self.category_threshold].index)
+                            df[i] = df[i].replace(distinct, 'Other')
                         
-                        
+        self.df = df                
         return df
         
     def scale_data(self, df):
@@ -246,13 +261,13 @@ class Preprocessor():
         if self.transform_method not in ['yeo-johnson', 'box-cox']:
             raise ValueError("method must be one of: yeo-johnson, box-cox")
         
+        df = df.compute()
         if self.transformer == None:
             transformer = sklearn.preprocessing.PowerTransformer(method = self.transform_method, standardize = False)
-            df[self.numeric_features] = dd.from_array(df[self.numeric_features].map_partitions(transformer.fit_transform))
+            df[self.numeric_features] = transformer.fit_transform(df[self.numeric_features])
             self.transformer = transformer
         else:
-            df[self.numeric_features] = dd.from_array(df[self.numeric_features].map_partitions(self.transformer.transform))
-        
+            df[self.numeric_features] = self.transformer.fit_transform(df[self.numeric_features])
         return df
     
     def execute(self, duplicates = True, missing = True, scale = True, transform = True, encode_target = False, train = True):
@@ -286,17 +301,17 @@ class Preprocessor():
             temp = self.train_df.copy()
         else:
             temp = self.test_df.copy()
-        
         if duplicates:
-            temp = self.remove_duplicates(temp)
+            temp = self.remove_invalid_duplicates(temp)
         if missing:
             temp = self.remove_missing_values(temp)
+        if encode_target:
+            temp = self.encode_target(temp)
         if scale:
             temp = self.scale_data(temp)
         if transform:
             temp = self.transform_data(temp)
-        if encode_target:
-            temp = self.encode_target(temp)
+            return temp
         
         df = temp.compute()
         
