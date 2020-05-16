@@ -647,8 +647,7 @@ class XGBoostModel():
     def feature_importance(self, importance_type='gain'):
 
       """
-      Calculates and plots feature importances of the models obtained by the
-      HyperOpt, Optuna and Random Search optimization algorithms
+      Calculates and plots feature importances of the trained model
 
       Parameters
       ----------
