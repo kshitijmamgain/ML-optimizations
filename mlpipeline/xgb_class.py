@@ -328,6 +328,8 @@ class XGBoostModel():
         A dictionary containing the set of parameters that resulted in the best
         value of the loss function using the Optuna optimization algorithm.
       """
+      optuna.logging.enable_propagation()
+      optuna.logging.disable_default_handler()
       print('Starting Optuna hyperparameter tuning...')
       self.trials = pd.DataFrame(columns=['params', 'loss', 'variance',
                                                  'n_estimators', 'time'])
@@ -425,14 +427,14 @@ class XGBoostModel():
 
         return results['loss']
 
-      if not os.path.exists('XGBoost_trials'):
-        os.makedirs('XGBoost_trials')
-      self.trials.to_csv('XGBoost_trials/optuna_trials.csv')
-
       study = optuna.create_study(direction='minimize',
                                   sampler=optuna.samplers.TPESampler(
                                       seed=self.seed))
       optimize = study.optimize(optuna_objective, n_trials=self.max_evals)
+
+      if not os.path.exists('XGBoost_trials'):
+        os.makedirs('XGBoost_trials')
+      self.trials.to_csv('XGBoost_trials/optuna_trials.csv')
 
       best = self.trials[['params', 'loss']].sort_values(
                                     by='loss', ascending=True).loc[0].to_dict()
