@@ -70,6 +70,11 @@ def _get_args():
                         help="The optimization to use",
                         type=str,
                         choices=['hyperopt', 'optuna', 'random_search'])
+    
+    parser.add_argument("--GPU",
+                       default=False,
+                       help='Whether or not to run using GPU',
+                       type=bool)
 
     return parser.parse_args()
 
@@ -86,6 +91,7 @@ def main():
     save_path = args.save_path
     optimization = args.optimization
     algorithm = args.algorithm
+    gpu = args.GPU
 
 	# Read the configuration file
     # config = json.load(open(config_path, 'r'))
@@ -111,9 +117,9 @@ def main():
 
     elif algorithm == "xgb":
 
-        model = XGBoostModel(X_train, y_train, max_evals=50, n_fold=5, 
-                        num_boost_rounds=100, early_stopping_rounds=10,
-                        seed=42, GPU=False)
+        model = XGBoostModel(X_train, y_train, max_evals=50, n_fold=3, 
+                        num_boost_rounds=20, early_stopping_rounds=5,
+                        seed=42, GPU=gpu)
         model.train(optim_type=optimization)
         model.test(X_test, y_test)
         predictions = model.predictions
