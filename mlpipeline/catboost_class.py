@@ -104,7 +104,7 @@ class Ctbclass():
                            num_boost_round=NUM_BOOST_ROUNDS,
                            early_stopping_rounds=EARLY_STOPPING_ROUNDS,
                            stratified=True, partition_random_seed=SEED,
-                           plot=True)
+                           plot=False)
         # store the runtime
         run_time = timer() - start
         # Extract the best score
@@ -114,7 +114,7 @@ class Ctbclass():
         # Boosting rounds that returned the highest cv score
         n_estimators = int(np.argmax(cv_results['test-AUC-mean']) + 1)
         self.estimator = n_estimators
-        print(params)
+        #print(params)
         return loss, params, n_estimators, run_time
 
     def train(self, hyperparameter_optimizer):
@@ -152,11 +152,8 @@ class Ctbclass():
         if (self.lossguide_verifier == False) and (self.GPU == True):
             space.update({'score_function': hp.choice('score_function',['Cosine', 'L2', 'SolarL2', 'LOOL2', 'NewtonL2']),'thread_count': 2})
         fn = getattr(self, fn_name)
-        try:
-            result = fmin(fn=fn, space= space, algo= algo, max_evals= MAX_EVALS,
+        result = fmin(fn=fn, space= space, algo= algo, max_evals= MAX_EVALS,
                           trials= trials, rstate= np.random.RandomState(SEED))
-        except Exception as e:
-            return {'status': STATUS_FAIL, 'exception': str(e)}
         self.params = trials.best_trial['result']['params']
         self.params['n_estimators'] = self.estimator
         print(result, trials)
@@ -189,7 +186,7 @@ class Ctbclass():
         
         # Perform n_folds cross validation
         loss, params, n_estimators, run_time = self.ctb_crossval(params, optim_type)
-	# Dictionary with information for evaluation
+        #Dictionary with information for evaluation
         return {'loss':loss, 'params':params, 'iteration':self.iteration,
                 'estimators':n_estimators, 'train_time':run_time, 'status':STATUS_OK}
 
@@ -197,12 +194,9 @@ class Ctbclass():
         '''Optuna search space'''
         fn_name = 'optuna_obj'
         fn = getattr(self, fn_name)
-        try:
-            study = optuna.create_study(direction='minimize', 
+        study = optuna.create_study(direction='minimize', 
                                         sampler = optuna.samplers.TPESampler(seed=SEED))
-            study.optimize(fn, n_trials = MAX_EVALS)
-        except Exception as e:
-            return {'exception': str(e)}
+        study.optimize(fn, n_trials = MAX_EVALS)
         self.params = study.best_params
         self.params['n_estimators'] = self.estimator
         return study
@@ -254,7 +248,6 @@ class Ctbclass():
             params['bagging_temperature'] = trial.suggest_uniform('bagging_temperature',
                                                                 np.log(1), np.log(50))
         loss, params, _, _ = self.ctb_crossval(params, optim_type)
-        print(params)
         return loss
 
     def random_space(self):
@@ -302,7 +295,7 @@ class Ctbclass():
             bagging_temperature_dist = list(np.logspace(np.log(1), np.log(50), base=np.exp(1), num=1000))
         if params['bootstrap_type'] == 'Bayesian':
             params['bagging_temperature'] = random.sample(bagging_temperature_dist,1)[0]
-            max_leaves_dist = list(range( 2, 32, 1))
+        max_leaves_dist = list(range( 2, 32, 1))
         if params['grow_policy'] == 'Lossguide':
             params['max_leaves'] = random.sample(max_leaves_dist,1)[0] 
             if self.GPU == False:
@@ -349,7 +342,7 @@ class Ctbclass():
         predictions=self.predictions        
         # Confusion matrix
         print(confusion_matrix(y_test, predictions))
-	# Accuracy, Precision, Recall, F1 score
+        # Accuracy, Precision, Recall, F1 score
         print(classification_report(y_test, predictions))
 
     def evaluate(self):
@@ -427,7 +420,4 @@ class Ctbclass():
         plt.title('FPR-FNR curves', fontsize=20)
         plt.legend(loc="lower left", fontsize=16)
         plt.savefig('fpr-fnr.png')
-        
-
-
 
