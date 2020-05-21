@@ -6,6 +6,7 @@
 ''' This class tunes hyperparamter for LightGBM ML algorithm for Higgs dataset'''
 import ast 
 import csv
+import os
 from timeit import default_timer as timer
 import random
 import numpy as np
@@ -339,5 +340,5 @@ class Lgbmclass():
         print("Model trained on the following parameters: \n{}".format(best))
         print('Plotting feature importances...')
         ax = lgb.plot_importance(self.gbm, max_num_features=10)
-        plt.savefig('feature_importance.png')
+        plt.savefig(os.path.join("figs",'lgb_'+optim_type+'feature_importance.png'))
         return self.pred
