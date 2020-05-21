@@ -1,5 +1,3 @@
-
-# Draft Codes
 # coding: utf-8
 ''' This class tunes hyperparamter for LightGBM ML algorithm for Higgs dataset'''
 
@@ -21,7 +19,7 @@ import optuna
 import matplotlib.pyplot as plt
 
 # defining constant
-MAX_EVALS = 3
+MAX_EVALS = 5
 N_FOLDS = 3
 NUM_BOOST_ROUNDS = 10000
 EARLY_STOPPING_ROUNDS = 100
@@ -108,7 +106,7 @@ class Lgbmclass():
         diagnostic = False (default) -> Best parameters from optimization
         diagnostic = True -> Trial list from optimization
         '''
-        methodlist = ['hypeopt_space','optuna_space','random_space']
+        methodlist = ['hyperopt_space','optuna_space','random_space']
         optim_type = op_type + '_space'
         if optim_type not in methodlist:
             raise TypeError('Otimization type must have a valid space:',
@@ -339,7 +337,7 @@ class Lgbmclass():
         self.pred = self.gbm.predict(x_test)
         print("Model will be trained with best parameters obtained from {} ... \n\n\n".format(optim_type))
         print("Model trained on the following parameters: \n{}".format(best))
-        '''print('Plotting feature importances...')
+        print('Plotting feature importances...')
         ax = lgb.plot_importance(self.gbm, max_num_features=10)
-        plt.savefig('feature_importance.png')'''
+        plt.savefig('feature_importance.png')
         return self.pred
