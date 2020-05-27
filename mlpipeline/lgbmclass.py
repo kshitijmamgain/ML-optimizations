@@ -93,9 +93,9 @@ class Lgbmclass():
 
         self.x_train = x_train
         self.y_train = y_train
-        self.train_set = lgb.Dataset(data=x_train, label=y_train)
+        self.train_set = lgb.Dataset(data=x_train, label=y_train, free_raw_data = False)
 
-    def train(self, op_type, diagnostic=False):
+    def train(self, op_type, device='gpu', diagnostic=False):
         '''
         Trains the object with optimization type
         Parameters
@@ -109,6 +109,7 @@ class Lgbmclass():
         '''
         methodlist = ['hyperopt_space','optuna_space','random_space']
         optim_type = op_type + '_space'
+        self.device = device
         if optim_type not in methodlist:
             raise TypeError('Otimization type must have a valid space:',
                             '\n\t\t hyperopt, optuna or random')
@@ -127,10 +128,11 @@ class Lgbmclass():
         optim_type: Is the type of optimization called we use lgb integration for optuna type
         Returns
         ------
-        Loss, params, n_estimator, run_time'''
+        Loss, params, n_estimators, run_time'''
         # initializing the timer
          
         start = timer()
+        params['device'] = self.device
         if optim_type == 'optuna':
             cv_results = lgbo.cv(params, self.train_set, num_boost_round=NUM_BOOST_ROUNDS,
                                  nfold=N_FOLDS, early_stopping_rounds=EARLY_STOPPING_ROUNDS,
@@ -180,7 +182,7 @@ class Lgbmclass():
         except Exception as e:
             return {'status': STATUS_FAIL, 'exception': str(e)}
         self.params = trials.best_trial['result']['params']
-        self.params['n_estimator'] = self.estimator
+        self.params['n_estimators'] = self.estimator
         return result, trials
 
     def hyperopt_obj(self, params):
@@ -229,7 +231,7 @@ class Lgbmclass():
         except Exception as e:
             return {'exception': str(e)}
         self.params = study.best_params
-        self.params['n_estimator'] = self.estimator
+        self.params['n_estimators'] = self.estimator
         return study
 
     def optuna_obj(self, trial):
@@ -288,7 +290,7 @@ class Lgbmclass():
         #sort values by the loss
         random_results.sort_values('loss', ascending = True, inplace = True)
         self.params = random_results.loc[0, 'params']
-        self.params['n_estimator'] = self.estimator
+        self.params['n_estimators'] = self.estimator
         return random_results
 
     def randomsrch_obj(self, params, iteration):
@@ -328,7 +330,7 @@ class Lgbmclass():
         param_df.sort_values('loss', ascending = True, inplace = True)
 
         best = ast.literal_eval(param_df.loc[0, 'params'])
-        best['n_estimator'] = int(param_df.loc[0, 'estimators'])
+        best['n_estimators'] = int(param_df.loc[0, 'estimators'])
         optim_type = param_df.loc[0, 'optim_type']
         for parameter_name in ['num_leaves', 'subsample_for_bin', 'min_data_in_leaf',
                                'max_bin', 'bagging_freq']:
