@@ -34,10 +34,14 @@ def _get_args():
                         help="path to encoder and model.",
                         type=str)
 
-    parser.add_argument("--data_path",
-                        default="data/higgs_data.csv",
-                        help="Path to  higgs_data",
+    parser.add_argument("--train_data_path",
+                        default="data/train.csv",
+                        help="Path to train data",
                         type=str)
+
+    parser.add_argument("--test_data_path",
+                        default='data/test.csv',
+                        help="Path to test data")
 
     parser.add_argument("--config_path",
                         default="config.json",
@@ -70,11 +74,6 @@ def _get_args():
                         help="The optimization to use",
                         type=str,
                         choices=['hyperopt', 'optuna', 'random_search'])
-    
-    parser.add_argument("--GPU",
-                       default=False,
-                       help='Whether or not to run using GPU',
-                       type=bool)
 
     return parser.parse_args()
 
@@ -85,26 +84,29 @@ def main():
     """
     args = _get_args()
     categorical_f_path = args.categorical_columns
-    data_path = args.data_path
+    train_data_path = args.train_data_path
+    test_data_path = args.test_data_path
     config_path = args.config_path
     result_path = args.result_path
     save_path = args.save_path
     optimization = args.optimization
     algorithm = args.algorithm
-    gpu = args.GPU
 
 	# Read the configuration file
     # config = json.load(open(config_path, 'r'))
     
+    #loading training and testing data into dataframes
+    df_train = utilities.load_data(path=train_data_path, sample_rate=None)
+    df_test = utilities.load_data(path=test_data_path, sample_rate=None)
+    if df_train and df_test:
+        logging.info('Train Dataframe of shape {} loaded'.format(df_train.shape))
+        logging.info('Test Dataframe of shape {} loaded'.format(df_test.shape))
+    else:
+        raise ValueError('Train and/or test dataframe not loaded')
 
-    df_data = utilities.load_data(data_path, sample_rate=0.01)
-    logging.info('Dataframe of shape {} loaded'.format(df_data.shape))
-
-    # preprocess data
-    # df_data = utilities.preprocess_train_test()
-
-    # create train-test dataset
-    X_train, X_test, y_train, y_test = utilities.create_test_train(df_data)
+    # create X and y
+    X_train, y_train = utilites.create_xy(df=df_train, target='target')
+    X_test, y_test = utilities.create_xy(df=df_test, target='target')
 
     # start with model training:
 
@@ -117,9 +119,9 @@ def main():
 
     elif algorithm == "xgb":
 
-        model = XGBoostModel(X_train, y_train, max_evals=50, n_fold=3, 
-                        num_boost_rounds=20, early_stopping_rounds=5,
-                        seed=42, GPU=gpu)
+        model = XGBoostModel(X_train, y_train, max_evals=50, n_fold=5, 
+                        num_boost_rounds=100, early_stopping_rounds=10,
+                        seed=42, GPU=False)
         model.train(optim_type=optimization)
         model.test(X_test, y_test)
         predictions = model.predictions
@@ -127,7 +129,7 @@ def main():
     elif algorithm == 'lgb':
 
         model = lgbc.Lgbmclass(X_train, y_train)
-        model.train(optimization)
+        model.train(optimization, device='cpu')
         model.test(X_test, y_test)
         predictions = model.pred
 
