@@ -308,7 +308,7 @@ class XGBoostModel():
       self.trials.to_csv('XGBoost_trials/hyperopt_trials.csv')
 
       best = self.trials[['params', 'loss']].sort_values(
-                                    by='loss', ascending=True).loc[0].to_dict()
+                                    by='loss', ascending=True).reset_index().loc[0].to_dict()
       best = best['params']
       self.best_params = best
       print('The best HyperOpt hyperparameters are: ')
@@ -437,7 +437,7 @@ class XGBoostModel():
       self.trials.to_csv('XGBoost_trials/optuna_trials.csv')
 
       best = self.trials[['params', 'loss']].sort_values(
-                                    by='loss', ascending=True).loc[0].to_dict()
+                                    by='loss', ascending=True).reset_index().loc[0].to_dict()
       best = best['params']
       self.best_params = best
 
@@ -573,7 +573,7 @@ class XGBoostModel():
       self.trials.to_csv('XGBoost_trials/random_search_trials.csv')
 
       best = self.trials[['params', 'loss']].sort_values(
-                                    by='loss', ascending=True).loc[0].to_dict()
+                                    by='loss', ascending=True).reset_index().loc[0].to_dict()
       self.best_params = best['params']
       print('The best Random Search hyperparameters are: ')
       print(best)
