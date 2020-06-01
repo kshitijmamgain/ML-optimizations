@@ -39,10 +39,10 @@ def create_xy(df, target):
 
 	"""
 	if isinstance(target, str):
-		X = df_data.drop(columns=target)
-		y = df_data.loc[:, target]
+		X = df.drop(columns=target)
+		y = df.loc[:, target]
 	elif isinstance(target, int):
-		X = df_data.drop(columns=df_data.columns[target])
+		X = df.drop(columns=df.columns[target])
 		y = df.iloc[:, target]
 
 	return X, y
