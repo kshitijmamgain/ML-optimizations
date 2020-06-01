@@ -97,15 +97,12 @@ def main():
     
     #loading training and testing data into dataframes
     df_train = utilities.load_data(path=train_data_path, sample_rate=None)
+    logging.info('Train Dataframe of shape {} loaded'.format(df_train.shape))
     df_test = utilities.load_data(path=test_data_path, sample_rate=None)
-    if df_train and df_test:
-        logging.info('Train Dataframe of shape {} loaded'.format(df_train.shape))
-        logging.info('Test Dataframe of shape {} loaded'.format(df_test.shape))
-    else:
-        raise ValueError('Train and/or test dataframe not loaded')
+    logging.info('Test Dataframe of shape {} loaded'.format(df_test.shape))
 
     # create X and y
-    X_train, y_train = utilites.create_xy(df=df_train, target='target')
+    X_train, y_train = utilities.create_xy(df=df_train, target='target')
     X_test, y_test = utilities.create_xy(df=df_test, target='target')
 
     # start with model training:
