@@ -72,7 +72,7 @@ class Model_Evaluation():
         metric_results['pr_curve_path'] = \
         pr_filename if self.prcurve(pr_filename, metric_results['pr-auc']) else "not generated"
         
-        metric_results['pr_curve_path'] = \
+        metric_results['fpr_fnr_path'] = \
         fpr_fnr_filename if self.fpr_fnr(fpr_fnr_filename) else "not generated"
 
         return metric_results
@@ -109,7 +109,7 @@ class Model_Evaluation():
 
         return True
         
-    def prcurve(self, filename,pr_auc):
+    def prcurve(self, filename, pr_auc):
         """
         output the precision recall curve for an instance
         filename <str> filename save the figure
@@ -142,7 +142,7 @@ class Model_Evaluation():
 
 
 
-    def fpr_fnr(self,filename):
+    def fpr_fnr(self, filename):
         """
         A class method to output the fpr_fnr curve for an instance
         filename <str> filename save the figure
