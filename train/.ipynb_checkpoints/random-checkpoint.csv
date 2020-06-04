@@ -1,0 +1,3 @@
+,loss,params,iteration,estimators,time
+0,0.21422581616134584,"{'num_leaves': 140, 'verbosity': 0, 'learning_rate': 0.08378388831717185, 'subsample': 0.8585858585858586, 'lambda_l1': 0.6938775510204082, 'bagging_freq': 2, 'feature_fraction': 0.926530612244898, 'class_weight': 'balanced', 'max_bin': 254, 'min_data_in_leaf': 230, 'boosting_type': 'gbdt', 'lambda_l2': 0.4081632653061224}",0,105,11.974064957999872
+1,0.21376664591184136,"{'num_leaves': 36, 'verbosity': 0, 'learning_rate': 0.0818305078558826, 'subsample': 0.8888888888888888, 'lambda_l1': 0.24489795918367346, 'bagging_freq': 3, 'feature_fraction': 0.8653061224489795, 'class_weight': None, 'max_bin': 254, 'min_data_in_leaf': 220, 'boosting_type': 'gbdt', 'lambda_l2': 0.08163265306122448}",1,104,12.00106703900019
