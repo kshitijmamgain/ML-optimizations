@@ -1,4 +1,4 @@
- parameter:
+parameter:
     'num_leaves': [16, 196, 4]
     'max_bin' : [253, 254, 1]
     'lambda_l1': [0.0, 1.0]
@@ -15,8 +15,8 @@
     'device_type': ['cpu', 'gpu']
 
 constant:
-    'max_evals': 3
-    'n_folds': 3
-    'num_boost_rounds': 10000
+    'max_evals': 1000
+    'n_folds': 10
+    'num_boost_rounds': 100
     'early_stopping_rounds': 100
     'seed': 47

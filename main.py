@@ -12,20 +12,23 @@ import os
 import warnings
 from sklearn.exceptions import DataConversionWarning
 import argparse
-import json
+
 import pickle as pkl
+from timeit import default_timer as timer
+import yaml
 
 pd.options.mode.chained_assignment = None
 warnings.filterwarnings(action='ignore', category=DataConversionWarning) 
 
 
+    
 def _get_args():
     """Get input arguments."""
     parser = argparse.ArgumentParser(
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
     parser.add_argument("--categorical_columns",
-                        default="data/categorical_features.json",
+                        default="data/categorical_features.yml",
                         help="path to categorical data.",
                         type=str)
 
@@ -33,18 +36,18 @@ def _get_args():
                         default="model",
                         help="path to encoder and model.",
                         type=str)
-
+    '''
     parser.add_argument("--train_data_path",
-                        default="data/train.csv",
+                        default=train_data_path,
                         help="Path to train data",
                         type=str)
 
     parser.add_argument("--test_data_path",
-                        default='data/test.csv',
-                        help="Path to test data")
+                        default=test_data_path,
+                        help="Path to test data")'''
 
     parser.add_argument("--config_path",
-                        default="config.json",
+                        default="config.yml",
                         help="path to configfile  path.",
                         type=str)
 
@@ -84,8 +87,8 @@ def main():
     """
     args = _get_args()
     categorical_f_path = args.categorical_columns
-    train_data_path = args.train_data_path
-    test_data_path = args.test_data_path
+    #train_data_path = args.train_data_path
+    #test_data_path = args.test_data_path
     config_path = args.config_path
     result_path = args.result_path
     save_path = args.save_path
@@ -94,6 +97,11 @@ def main():
 
 	# Read the configuration file
     # config = json.load(open(config_path, 'r'))
+    with open('config.yml') as file:
+        config = yaml.safe_load(file)
+    train_data_path = config['path']['train_data']
+    test_data_path = config['path']['test_data']
+    target_label = config['target']['label']
     
     #loading training and testing data into dataframes
     df_train = utilities.load_data(path=train_data_path, sample_rate=None)
@@ -102,8 +110,8 @@ def main():
     logging.info('Test Dataframe of shape {} loaded'.format(df_test.shape))
 
     # create X and y
-    X_train, y_train = utilities.create_xy(df=df_train, target='target')
-    X_test, y_test = utilities.create_xy(df=df_test, target='target')
+    X_train, y_train = utilities.create_xy(df=df_train, target=target_label)
+    X_test, y_test = utilities.create_xy(df=df_test, target=target_label)
 
     # start with model training:
 
@@ -124,11 +132,15 @@ def main():
         predictions = model.predictions
 
     elif algorithm == 'lgb':
-
+        
+        start = timer()
         model = lgbc.Lgbmclass(X_train, y_train)
         model.train(optimization, device='cpu')
+        train_time = timer() - start
+        logging.info('Train time {} with {} optimization: {} seconds'.format(algorithm, optimization, train_time))
         model.test(X_test, y_test)
         predictions = model.pred
+        
 
     #### Apply the test set and get the model evaluation results
 

@@ -12,7 +12,7 @@ import random
 import numpy as np
 import pandas as pd
 import lightgbm as lgb
-
+import gc
 from sklearn.metrics import auc, accuracy_score, roc_auc_score, roc_curve, confusion_matrix, precision_recall_curve
 from hyperopt import STATUS_OK, STATUS_FAIL, hp, tpe, Trials, fmin
 import optuna.integration.lightgbm as lgbo
@@ -20,8 +20,8 @@ import optuna
 import matplotlib.pyplot as plt
 
 # defining constant
-MAX_EVALS = 5
-N_FOLDS = 3
+MAX_EVALS = 1000
+N_FOLDS = 10
 NUM_BOOST_ROUNDS = 10000
 EARLY_STOPPING_ROUNDS = 100
 SEED = 47
@@ -83,7 +83,8 @@ class Lgbmclass():
         optional (default=None)) – Label of the data.'''
 
         
-
+        # clear memmory
+        gc.collect()
         # File to save first results
         self.out_file = RESULT_PATH
         with open(self.out_file, 'w', newline='') as of_connection:
@@ -93,7 +94,7 @@ class Lgbmclass():
 
         self.x_train = x_train
         self.y_train = y_train
-        self.train_set = lgb.Dataset(data=x_train, label=y_train, free_raw_data = False)
+        self.train_set = lgb.Dataset(data=x_train, label=y_train)
 
     def train(self, op_type, device='gpu', diagnostic=False):
         '''
@@ -107,12 +108,12 @@ class Lgbmclass():
         diagnostic = False (default) -> Best parameters from optimization
         diagnostic = True -> Trial list from optimization
         '''
-        methodlist = ['hyperopt_space','optuna_space','random_space']
+        methodlist = ['hyperopt_space','optuna_space','random_search_space']
         optim_type = op_type + '_space'
         self.device = device
         if optim_type not in methodlist:
             raise TypeError('Otimization type must have a valid space:',
-                            '\n\t\t hyperopt, optuna or random')
+                            '\n\t\t hyperopt, optuna or random_search')
         tuner = getattr(self, optim_type)
         if diagnostic:
             return(tuner())
@@ -133,6 +134,7 @@ class Lgbmclass():
          
         start = timer()
         params['device'] = self.device
+        params['is_unbalance'] = True
         if optim_type == 'optuna':
             cv_results = lgbo.cv(params, self.train_set, num_boost_round=NUM_BOOST_ROUNDS,
                                  nfold=N_FOLDS, early_stopping_rounds=EARLY_STOPPING_ROUNDS,
@@ -270,7 +272,7 @@ class Lgbmclass():
 
         return loss
 
-    def random_space(self):
+    def random_search_space(self):
         '''Random search space'''
         print('Running {} rounds of LGBM parameter optimisation using Random Search:'.format(MAX_EVALS))
         # Dataframe to hold cv results
