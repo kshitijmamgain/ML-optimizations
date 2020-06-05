@@ -16,7 +16,12 @@ import seaborn as sns
 import shap
 import csv
 import os
+from sklearn.metrics import f1_score
 
+def f1_eval(pred, dmatrix):
+    y = dmatrix.get_label()
+    f1 = f1_score(y, np.round(pred))
+    return 'F1', 1-f1
 
 class XGBoostModel():
 
@@ -106,7 +111,7 @@ class XGBoostModel():
           'n_estimators': the number of boosting rounds used
           'time': the time it took to run the model
       """
-
+    
       if not isinstance(space, dict):
         raise TypeError('Parameters must be provided as a dictionary')
 
@@ -115,10 +120,13 @@ class XGBoostModel():
                           self.dtrain,
                           num_boost_round=self.num_boost_rounds,
                           early_stopping_rounds=self.early_stopping_rounds,
+                          stratified=True,
+                          feval=f1_eval,
                           verbose_eval=True,
                           nfold=self.nfold,
-                          metrics=space['eval_metric'],
-                          seed=self.seed)
+                          metrics=space['eval_metric']
+#                           seed=self.seed
+                         )
       end = timer()
       cv_score = np.min(cv_results['test-logloss-mean'])
       cv_var = np.min(cv_results['test-logloss-std'])**2
@@ -168,10 +176,10 @@ class XGBoostModel():
                                                              'weighted']),
                     'normalize_type': hp.choice('normalize_type', ['tree',
                                                                    'forest']),
-                    'rate_drop': hp.uniform('rate_drop', 0, 1),
-                    'skip_drop': hp.uniform('skip_drop', 0, 1)}]
+                    'rate_drop': hp.quniform('rate_drop', 0, 0.5, 0.1),
+                    'skip_drop': hp.quniform('skip_drop', 0, 0.5, 0.1)}]
 
-        max_bin = hp.choice('max_bin', [2**7, 2**8, 2**9, 2**10])
+        max_bin = 2**hp.quniform('max_bin', 7, 9, 1)-1
         if self.GPU:
           tree_method = [{'tree_method': 'gpu_hist',
                           'single_precision_histogram': hp.choice(
@@ -179,7 +187,7 @@ class XGBoostModel():
                           'deterministic_histogram': hp.choice(
                                   'deterministic_histogram', [True, False]),
                           'max_bin': max_bin}]
-          subsample = hp.uniform('subsample', 0.1, 1)
+          subsample = hp.quniform('subsample', 0.1, 1, 0.1)
 
         else:
           tree_method = [{'tree_method': 'auto'},
@@ -187,8 +195,8 @@ class XGBoostModel():
                          {'tree_method': 'hist',
                           'max_bin': max_bin},
                          {'tree_method': 'approx',
-                          'sketch_eps': hp.uniform('sketch_eps', 0.01, 0.99)}]
-          subsample = hp.uniform('subsample', 0.5, 1)
+                          'sketch_eps': hp.quniform('sketch_eps', 0.005, 0.05, 0.005)}]
+          subsample = hp.quniform('subsample', 0.5, 1, 0.1)
 
         params = {
                   'objective': 'binary:logistic',
@@ -196,24 +204,24 @@ class XGBoostModel():
                   'verbosity': 1,
                   'disable_default_eval_metric': 1,
                   'booster': hp.choice('booster', booster),
-                  'reg_lambda': hp.quniform('reg_lambda', 1, 2, 0.1),
-                  'reg_alpha': hp.quniform('reg_alpha', 0, 10, 1),
-                  'max_delta_step': hp.quniform('max_delta_step', 1, 10, 1),
+                  'reg_lambda': 10**hp.quniform('reg_lambda', -3, 2, 1),
+                  'reg_alpha': 10**hp.quniform('reg_alpha', -3, 2, 1),
+                  'max_delta_step': hp.quniform('max_delta_step', 0, 5, 1),
                   'max_depth': hp.choice('max_depth', np.arange(1, 14,
                                                                 dtype=int)),
-                  'eta': hp.quniform('eta', 0.025, 0.5, 0.025),
-                  'gamma': hp.quniform('gamma', 0.5, 1.0, 0.05),
+#                   'eta': hp.quniform('eta', 0.025, 0.5, 0.025),
+                  'gamma': 10**hp.quniform('gamma', -3, 2, 1),
                   'grow_policy': hp.choice('grow_policy', grow_policy),
                   'subsample': subsample,
                   'sampling_method': 'uniform',
-                  'min_child_weight': hp.quniform('min_child_weight',
-                                                  1, 10, 1),
+                  'min_child_weight': 10**hp.quniform('min_child_weight',
+                                                  -3, 2, 1),
                   'colsample_bytree': hp.quniform('colsample_bytree',
-                                                  0.1, 1, 0.05),
+                                                  0.5, 1, 0.1),
                   'colsample_bylevel': hp.quniform('colsample_bylevel',
-                                                   0.1, 1, 0.05),
+                                                   0.5, 1, 0.1),
                   'colsample_bynode': hp.quniform('colsample_bynode',
-                                                  0.1, 1, 0.05),
+                                                  0.5, 1, 0.1),
                   'tree_method': hp.choice('tree_method', tree_method),
                   'scale_pos_weight': self.ratio,
                   'predictor': 'cpu_predictor'
@@ -266,7 +274,7 @@ class XGBoostModel():
         if space['tree_method']['tree_method'] not in ['approx',
                                                        'auto', 'exact']:
               max_bin = space['tree_method'].get('max_bin')
-              space['max_bin'] = max_bin
+              space['max_bin'] = int(max_bin)
 
         if space['tree_method']['tree_method'] == 'gpu_hist':
               single_precision_histogram = space['tree_method'].get(
@@ -286,23 +294,34 @@ class XGBoostModel():
         print(space)
 
         results = self.cross_validation(space)
-
         self.trials = self.trials.append(results, ignore_index=True)
-
+        
+        current_time = (timer()-self.time)/3600
+        print('\n')
+        print('Time elapsed so far: '+ str(current_time) + ' hours')
+        print('\n')
+            
         result_dict = {'loss': results['loss'],
                        'status': STATUS_OK,
                        'parameters': results['params']}
-
+        
         return (result_dict)
-
+      
+      
       trials = Trials()
-      optimize = fmin(fn=hyperopt_objective,
-                  space=space,
-                  algo=tpe.suggest,
-                  trials=trials,
-                  max_evals=self.max_evals,
-                  rstate=np.random.RandomState(seed=self.seed))
-
+      self.time = timer()
+    
+      try:
+        optimize = fmin(fn=hyperopt_objective,
+                      space=space,
+                      algo=tpe.suggest,
+                      trials=trials,
+                      max_evals=self.max_evals,
+                      rstate=np.random.RandomState(seed=self.seed))
+      except:
+        pass
+      self.time_end = (timer() - self.time)/3600
+        
       if not os.path.exists('XGBoost_trials'):
         os.makedirs('XGBoost_trials')
       self.trials.to_csv('XGBoost_trials/hyperopt_trials.csv')
@@ -608,12 +627,13 @@ class XGBoostModel():
 
       self.output[self.optim_type] = {}
       self.output[self.optim_type]['params'] = self.best_params
-
-      self.best_model = xgb.train(self.best_params, self.dtrain)
-      pickle.dump(self.best_model, open('XGBoost_' + self.optim_type + "_model.dat", "wb"))
       
-
+      start = timer()
+      self.best_model = xgb.train(self.best_params, self.dtrain)
+      self.train_time = timer() - start
+      pickle.dump(self.best_model, open('XGBoost_' + self.optim_type + "_model.dat", "wb"))
       self.trained = True
+      self.train_predictions = self.best_model.predict(self.dtrain)
 
     def test(self, x_test, y_test):
       """
@@ -636,7 +656,9 @@ class XGBoostModel():
       self.predictions = self.best_model.predict(self.dtest)
       score = log_loss(self.y_test, np.float64(self.predictions))
       self.output[self.optim_type]['score'] = score
- 
+      self.output[self.optim_type]['train_time'] = self.train_time
+      self.output[self.optim_type]['optimization_time'] = self.time_end
+        
       self.tested = True
       print('Testing Results: ')
       print(self.output)
