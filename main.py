@@ -102,8 +102,8 @@ def main():
     logging.info('Test Dataframe of shape {} loaded'.format(df_test.shape))
 
     # create X and y
-    X_train, y_train = utilities.create_xy(df=df_train, target='target')
-    X_test, y_test = utilities.create_xy(df=df_test, target='target')
+    X_train, y_train = utilities.create_xy(df=df_train, target='Class')
+    X_test, y_test = utilities.create_xy(df=df_test, target='Class')
 
     # start with model training:
 
@@ -116,12 +116,13 @@ def main():
 
     elif algorithm == "xgb":
 
-        model = XGBoostModel(X_train, y_train, max_evals=50, n_fold=5, 
-                        num_boost_rounds=100, early_stopping_rounds=10,
+        model = XGBoostModel(X_train, y_train, max_evals=1000, n_fold=5, 
+                        num_boost_rounds=10000, early_stopping_rounds=100,
                         seed=42, GPU=False)
         model.train(optim_type=optimization)
+        train_predictions = model.train_predictions
         model.test(X_test, y_test)
-        predictions = model.predictions
+        test_predictions = model.predictions
 
     elif algorithm == 'lgb':
 
@@ -130,11 +131,8 @@ def main():
         model.test(X_test, y_test)
         predictions = model.pred
 
-    #### Apply the test set and get the model evaluation results
-
-    me = Model_Evaluation() 
-    me.set_label_scores(predictions,y_test)
-
+    ### Apply the test set and get the model evaluation results
+    
     roc_filename  = "roc_" + algorithm + "_" + optimization +".png"
     roc_filename = os.path.join("figs", roc_filename)
     pr_filename  = "pr_" + algorithm + "_" + optimization +".png"
@@ -142,23 +140,27 @@ def main():
     fpr_fnr_filename = "fpr_fnr_" + "_" + algorithm + "_" + optimization +".png"
     fpr_fnr_filename = os.path.join("figs", fpr_fnr_filename)
 
-    results = me.get_metrics(roc_filename,
-                   pr_filename,
-                   fpr_fnr_filename,
-                   algorithm)
+    for predictions, actual, mode in [(train_predictions, y_train, 'train'), (test_predictions, y_test, 'test')]:
+        me = Model_Evaluation() 
+        me.set_label_scores(predictions, actual)
+        results = me.get_metrics(roc_filename,
+                       pr_filename,
+                       fpr_fnr_filename,
+                       algorithm)
 
-    if  not results:
-        raise Exception("no results generated! please check!")
-    else:  ### Print the results #### 
-        logging.info("results generated, will be printing the results")
-        print ("*" * 100)
-        print ("Results obtained from %s" %(algorithm))
-        print ("   PR_AUC   :", results['pr-auc'])
-        print( " Classification Report  \n", results['class_report'])
-        print (" Confusion Matrix   \n", results['conf_metrics'])
-        print (" ROC AUC   ",results['roc_auc'])
-        print ("*" * 100)
-        pkl.dump(results, open(algorithm +"_"+ optimization, "wb"))
+        if  not results:
+            raise Exception("no results generated! please check!")
+        else:  ### Print the results #### 
+            logging.info("results generated, will be printing the results")
+            print ("*" * 100)
+            print ('Mode: '+ mode)
+            print ("Results obtained from %s" %(algorithm))
+            print ("   PR_AUC   :", results['pr-auc'])
+            print( " Classification Report  \n", results['class_report'])
+            print (" Confusion Matrix   \n", results['conf_metrics'])
+            print (" ROC AUC   ",results['roc_auc'])
+            print ("*" * 100)
+            pkl.dump(results, open(algorithm +"_"+ optimization +"_" + mode, "wb"))
 
 if __name__ == "__main__":
     args = _get_args()
