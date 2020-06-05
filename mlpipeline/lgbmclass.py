@@ -18,7 +18,7 @@ from hyperopt import STATUS_OK, STATUS_FAIL, hp, tpe, Trials, fmin
 import optuna.integration.lightgbm as lgbo
 import optuna
 import matplotlib.pyplot as plt
-
+import pickle as pkl
 # defining constant
 MAX_EVALS = 1000
 N_FOLDS = 10
@@ -38,7 +38,7 @@ PARAM_GRID = {
     'lambda_l2': list(np.linspace(0, 1)),
     'min_data_in_leaf' : list(range(20, 500, 10)),
     'boosting_type': ['gbdt', 'goss'],
-    'learning_rate' : list(np.logspace(np.log(0.05), np.log(0.2), base=np.exp(1), num=1000)),
+    #'learning_rate' : list(np.logspace(np.log(0.05), np.log(0.2), base=np.exp(1), num=1000)),
     'feature_fraction': list(np.linspace(0.4, 1.0)),
     'subsample_for_bin': list(range(20000, 300000, 20000)),
     'bagging_freq': list(range(1, 7)),
@@ -50,17 +50,15 @@ PARAM_GRID = {
 # Hyperopt Space
 H_SPACE = {
     'num_leaves': hp.quniform('num_leaves', 16, 196, 4),
-    'max_bin' : hp.quniform('max_bin', 253, 254, 1), #if using CPU just set this to 254
-    'lambda_l1': hp.uniform('lambda_l1', 0.0, 1.0),
-    'lambda_l2': hp.uniform("lambda_l2", 0.0, 1.0),
-    'min_data_in_leaf' : hp.quniform('min_data_in_leaf', 20, 500, 10),
+    'max_bin' : 254, #if using CPU just set this to 254
+    'lambda_l1': hp.uniform('lambda_l1', 0.0, 0.5),
+    'lambda_l2': hp.uniform("lambda_l2", 0.0, 0.5),
+    'min_data_in_leaf' : hp.quniform('min_data_in_leaf', 30, 500, 20),
     'boosting_type': hp.choice('boosting_type',
                                [{'boosting_type': 'gbdt',
                                  'subsample': hp.uniform('gdbt_subsample', 0.5, 1)},
-                                #{'boosting_type': 'dart',
-                                #'subsample': hp.uniform('dart_subsample', 0.5, 1)},
                                 {'boosting_type': 'goss', 'subsample': 1.0}]),
-    'learning_rate' : hp.loguniform('learning_rate', np.log(0.05), np.log(0.25)),
+    #'learning_rate' : hp.loguniform('learning_rate', np.log(0.05), np.log(0.25)),
     'subsample_for_bin': hp.quniform('subsample_for_bin', 20000, 300000, 20000),
     'feature_fraction': hp.uniform('feature_fraction', 0.4, 1.0),
     'bagging_freq': hp.uniform('bagging_freq', 1, 7),
@@ -176,11 +174,24 @@ class Lgbmclass():
         result: best parameter that minimizes the fn_name over max_evals = MAX_EVALS FIXED FOR TESTING
         trials: the database in which to store all the point evaluations of the search'''
         print('Running {} rounds of LGBM parameter optimisation using Hyperopt:'.format(MAX_EVALS))
-        fn_name, space, algo, trials='hyperopt_obj', H_SPACE, tpe.suggest, Trials()
+        fn_name, space, algo ='hyperopt_obj', H_SPACE, tpe.suggest
         fn = getattr(self, fn_name)
         try:
-            result = fmin(fn=fn, space=space, algo=algo, max_evals=MAX_EVALS,
-                          trials=trials, rstate=np.random.RandomState(SEED))
+            trials = pickle.load(open("lgb_hyperopt","rb"))
+        except:
+            trials = Trials()
+        
+        try:
+            step = 20 # save trial for after every 20 trials
+            for i in range(1, MAX_EVALS + 1, step):
+                # fmin runs until the trials object has max_evals elements in it, so it can do evaluations in chunks like this
+                # each step 'best' will be the best trial so far
+                # each step 'trials' will be updated to contain every result
+                # you can save it to reload later in case of a crash, or you decide to kill the script
+                pickle.dump(trials, open("my_results.pkl", "wb"))
+
+                result = fmin(fn=fn, space=space, algo=algo, max_evals=i,
+                              trials=trials, rstate=np.random.RandomState(SEED))
         except Exception as e:
             return {'status': STATUS_FAIL, 'exception': str(e)}
         self.params = trials.best_trial['result']['params']
