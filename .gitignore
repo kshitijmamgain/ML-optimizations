@@ -4,3 +4,7 @@
 __pycache__/
 *.png
 *.ipynb_checkpoints
+log/
+lgb_hyperopt
+lgb_optuna
+lgb_random_search
