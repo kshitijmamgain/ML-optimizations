@@ -25,6 +25,7 @@ N_FOLDS = 10
 NUM_BOOST_ROUNDS = 10000
 EARLY_STOPPING_ROUNDS = 100
 SEED = 47
+STEP = 25
 
 RESULT_PATH = 'lgbm.csv'
 OBJECTIVE_LOSS = 'binary' # use cross_entropy
@@ -33,7 +34,7 @@ EVAL_METRIC = ['auc', 'binary', 'xentropy']
 def f1_eval(pred, data):
     y = data.get_label()
     f1 = f1_score(y, np.round(pred))
-    return 'F1', f1
+    return 'F1', f1, True
 
 # random search
 PARAM_GRID = {
@@ -141,7 +142,7 @@ class Lgbmclass():
         if optim_type == 'optuna':
             cv_results = lgbo.cv(params, self.train_set, num_boost_round=NUM_BOOST_ROUNDS,
                                  nfold=N_FOLDS, early_stopping_rounds=EARLY_STOPPING_ROUNDS,
-                                 metrics=EVAL_METRIC, seed=SEED)
+                                 feval=f1_eval,metrics=EVAL_METRIC, seed=SEED)
         else:
             cv_results = lgb.cv(params, self.train_set, num_boost_round=NUM_BOOST_ROUNDS,
                                 nfold=N_FOLDS, early_stopping_rounds=EARLY_STOPPING_ROUNDS,
@@ -150,7 +151,7 @@ class Lgbmclass():
         run_time = timer() - start
 
         # Extract the best score
-        best_score = np.max(cv_results['f1-mean'])
+        best_score = np.max(cv_results['F1-mean'])
 
         # Loss must be minimized
         loss = 1 - best_score
@@ -187,7 +188,7 @@ class Lgbmclass():
             trials = Trials()
         
         # create checkpoints
-        step = 20 # save trial for after every 20 trials
+        step = STEP # save trial for after every 20 trials
         for i in range(1, MAX_EVALS + 1, step):
             # fmin runs until the trials object has max_evals elements in it, so it can do evaluations in chunks like this
             # each step 'best' will be the best trial so far
@@ -241,11 +242,17 @@ class Lgbmclass():
         print('Running {} rounds of LGBM parameter optimisation using Optuna:'.format(MAX_EVALS))
         fn_name = 'optuna_obj'
         fn = getattr(self, fn_name)
+        
         try:
+            study = pickle.load(open("lgb_optuna","rb"))
+        except:
             study = optuna.create_study(direction='minimize', sampler=optuna.samplers.TPESampler(seed=SEED))
+        
+        step = STEP # save trial for after every 20 trials
+        for i in range(1, MAX_EVALS + 1, step):
+            pickle.dump(study, open("lgb_optuna.pkl", "wb"))
             study.optimize(fn, n_trials=MAX_EVALS)
-        except Exception as e:
-            return {'exception': str(e)}
+        
         self.params = study.best_params
         self.params['n_estimators'] = self.estimator
         return study
