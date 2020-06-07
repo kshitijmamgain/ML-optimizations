@@ -13,12 +13,12 @@ import numpy as np
 import pandas as pd
 import lightgbm as lgb
 import gc
-from sklearn.metrics import auc, accuracy_score, roc_auc_score, roc_curve, confusion_matrix, precision_recall_curve
+from sklearn.metrics import auc, accuracy_score, roc_auc_score, roc_curve, confusion_matrix, precision_recall_curve, f1_score
 from hyperopt import STATUS_OK, STATUS_FAIL, hp, tpe, Trials, fmin
 import optuna.integration.lightgbm as lgbo
 import optuna
 import matplotlib.pyplot as plt
-import pickle as pkl
+import pickle
 # defining constant
 MAX_EVALS = 1000
 N_FOLDS = 10
@@ -29,6 +29,11 @@ SEED = 47
 RESULT_PATH = 'lgbm.csv'
 OBJECTIVE_LOSS = 'binary' # use cross_entropy
 EVAL_METRIC = ['auc', 'binary', 'xentropy']
+
+def f1_eval(pred, data):
+    y = data.get_label()
+    f1 = f1_score(y, np.round(pred))
+    return 'F1', f1
 
 # random search
 PARAM_GRID = {
@@ -140,12 +145,12 @@ class Lgbmclass():
         else:
             cv_results = lgb.cv(params, self.train_set, num_boost_round=NUM_BOOST_ROUNDS,
                                 nfold=N_FOLDS, early_stopping_rounds=EARLY_STOPPING_ROUNDS,
-                                metrics=EVAL_METRIC, seed=SEED)
+                                feval=f1_eval,metrics=EVAL_METRIC, seed=SEED)
         # store the runtime
         run_time = timer() - start
 
         # Extract the best score
-        best_score = np.max(cv_results['auc-mean'])
+        best_score = np.max(cv_results['f1-mean'])
 
         # Loss must be minimized
         loss = 1 - best_score
