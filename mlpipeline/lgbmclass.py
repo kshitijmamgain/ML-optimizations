@@ -13,7 +13,7 @@ import numpy as np
 import pandas as pd
 import lightgbm as lgb
 import gc
-from sklearn.metrics import auc, accuracy_score, roc_auc_score, roc_curve, confusion_matrix, precision_recall_curve, f1_score
+from sklearn.metrics import f1_score
 from hyperopt import STATUS_OK, STATUS_FAIL, hp, tpe, Trials, fmin
 import optuna.integration.lightgbm as lgbo
 import optuna
@@ -157,7 +157,7 @@ class Lgbmclass():
         loss = 1 - best_score
 
         # Boosting rounds that returned the highest cv score
-        n_estimators = int(np.argmax(cv_results['auc-mean']) + 1) # more explanation
+        n_estimators = int(np.argmax(cv_results['F1-mean']) + 1) # more explanation
         self.estimator = n_estimators
 
         # Write to the csv file ('a' means append)
