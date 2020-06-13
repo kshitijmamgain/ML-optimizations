@@ -128,10 +128,10 @@ class XGBoostModel():
 #                           seed=self.seed
                          )
       end = timer()
-      cv_score = np.min(cv_results['test-logloss-mean'])
-      cv_var = np.min(cv_results['test-logloss-std'])**2
-      n_estimators = int(np.argmin(cv_results['test-logloss-mean']) + 1)
-      space['n_estimators'] = n_estimators
+      cv_score = np.min(cv_results['test-F1-mean'])
+      cv_var = np.min(cv_results['test-F1-std'])**2
+      n_estimators = int(np.argmin(cv_results['test-F1-mean']) + 1)
+      self.estimators = n_estimators
       results = {'loss': cv_score, 'variance': cv_var, 'params': space,
                  'n_estimators': n_estimators, 'time': end - start}
 
@@ -167,35 +167,39 @@ class XGBoostModel():
         """
 
         grow_policy = [{'grow_policy': 'depthwise'},
-                       {'grow_policy': 'lossguide',
-                        'max_leaves': hp.quniform('max_leaves', 2, 32, 1)}]
+                       {'grow_policy': 'lossguide'}]
 
-        booster = [{'booster': 'gbtree'},
-                   {'booster': 'dart',
-                    'sample_type': hp.choice('sample_type', ['uniform',
-                                                             'weighted']),
-                    'normalize_type': hp.choice('normalize_type', ['tree',
-                                                                   'forest']),
-                    'rate_drop': hp.quniform('rate_drop', 0, 0.5, 0.1),
-                    'skip_drop': hp.quniform('skip_drop', 0, 0.5, 0.1)}]
+        booster = [{'booster': 'gbtree'}
+                  #  {'booster': 'dart',
+                  #   'sample_type': hp.choice('sample_type', ['uniform',
+                  #                                            'weighted']),
+                  #   'normalize_type': hp.choice('normalize_type', ['tree',
+                  #                                                  'forest']),
+                  #   'rate_drop': hp.quniform('rate_drop', 0, 0.5, 0.1),
+                  #   'skip_drop': hp.quniform('skip_drop', 0, 0.5, 0.1)}
+                    ]
 
-        max_bin = 2**hp.quniform('max_bin', 7, 9, 1)-1
+        # max_bin = hp.choice('max_bin', [2**6-1, 2**7-1, 2**8-1, 2**9-1, 2**10-1])
         if self.GPU:
           tree_method = [{'tree_method': 'gpu_hist',
                           'single_precision_histogram': hp.choice(
                                   'single_precision_histogram', [True, False]),
                           'deterministic_histogram': hp.choice(
-                                  'deterministic_histogram', [True, False]),
-                          'max_bin': max_bin}]
+                                  'deterministic_histogram', [True, False])
+                          # 'max_bin': max_bin
+                          }
+                          ]
           subsample = hp.quniform('subsample', 0.1, 1, 0.1)
 
         else:
-          tree_method = [{'tree_method': 'auto'},
-                         {'tree_method': 'exact'},
-                         {'tree_method': 'hist',
-                          'max_bin': max_bin},
-                         {'tree_method': 'approx',
-                          'sketch_eps': hp.quniform('sketch_eps', 0.005, 0.05, 0.005)}]
+          tree_method = [
+                        #   {'tree_method': 'auto'},
+                        #  {'tree_method': 'exact'},
+                         {'tree_method': 'hist'},
+                          # 'max_bin': max_bin},
+                         {'tree_method': 'approx'}
+                          # 'sketch_eps': hp.quniform('sketch_eps', 0.005, 0.05, 0.005)}
+                          ]
           subsample = hp.quniform('subsample', 0.5, 1, 0.1)
 
         params = {
@@ -204,18 +208,17 @@ class XGBoostModel():
                   'verbosity': 1,
                   'disable_default_eval_metric': 1,
                   'booster': hp.choice('booster', booster),
-                  'reg_lambda': 10**hp.quniform('reg_lambda', -3, 2, 1),
-                  'reg_alpha': 10**hp.quniform('reg_alpha', -3, 2, 1),
-                  'max_delta_step': hp.quniform('max_delta_step', 0, 5, 1),
-                  'max_depth': hp.choice('max_depth', np.arange(1, 14,
+                  'reg_lambda': hp.loguniform('reg_lambda', -3*np.log(10), 2*np.log(10)),
+                  'reg_alpha': hp.loguniform('reg_alpha', -3*np.log(10), 2*np.log(10)),
+                  # 'max_delta_step': hp.quniform('max_delta_step', 0, 5, 1),
+                  'max_depth': hp.choice('max_depth', np.arange(3, 12,
                                                                 dtype=int)),
-#                   'eta': hp.quniform('eta', 0.025, 0.5, 0.025),
-                  'gamma': 10**hp.quniform('gamma', -3, 2, 1),
+                  'eta': 0.5,
+                  'gamma': hp.loguniform('gamma', -3*np.log(10), 2*np.log(10)),
                   'grow_policy': hp.choice('grow_policy', grow_policy),
                   'subsample': subsample,
                   'sampling_method': 'uniform',
-                  'min_child_weight': 10**hp.quniform('min_child_weight',
-                                                  -3, 2, 1),
+                  'min_child_weight': hp.loguniform('min_child_weight', -3*np.log(10), 2*np.log(10)),
                   'colsample_bytree': hp.quniform('colsample_bytree',
                                                   0.5, 1, 0.1),
                   'colsample_bylevel': hp.quniform('colsample_bylevel',
@@ -254,8 +257,7 @@ class XGBoostModel():
           raise TypeError('Parameters must be provided as a dictionary')
 
         if space['grow_policy']['grow_policy'] == 'lossguide':
-              max_leaves = space['grow_policy'].get('max_leaves')
-              space['max_leaves'] = int(max_leaves)
+              space['max_leaves'] = 2**space['max_depth']-1
 
         if space['booster']['booster'] == 'dart':
               sample_type = space['booster'].get('sample_type')
@@ -267,14 +269,14 @@ class XGBoostModel():
               space['rate_drop'] = rate_drop
               space['skip_drop'] = skip_drop
 
-        if space['tree_method']['tree_method'] == 'approx':
-              sketch_eps = space['tree_method'].get('sketch_eps')
-              space['sketch_eps'] = sketch_eps
+        # if space['tree_method']['tree_method'] == 'approx':
+        #       sketch_eps = space['tree_method'].get('sketch_eps')
+        #       space['sketch_eps'] = sketch_eps
 
-        if space['tree_method']['tree_method'] not in ['approx',
-                                                       'auto', 'exact']:
-              max_bin = space['tree_method'].get('max_bin')
-              space['max_bin'] = int(max_bin)
+        # if space['tree_method']['tree_method'] not in ['approx',
+        #                                                'auto', 'exact']:
+        #       max_bin = space['tree_method'].get('max_bin')
+        #       space['max_bin'] = int(max_bin)
 
         if space['tree_method']['tree_method'] == 'gpu_hist':
               single_precision_histogram = space['tree_method'].get(
@@ -316,11 +318,12 @@ class XGBoostModel():
                       space=space,
                       algo=tpe.suggest,
                       trials=trials,
-                      max_evals=self.max_evals,
-                      rstate=np.random.RandomState(seed=self.seed))
+                      max_evals=self.max_evals
+#                       rstate=np.random.RandomState(seed=self.seed)
+                       )
       except:
         pass
-      self.time_end = (timer() - self.time)/3600
+      self.opt_time = (timer() - self.time)/3600
         
       if not os.path.exists('XGBoost_trials'):
         os.makedirs('XGBoost_trials')
@@ -446,9 +449,10 @@ class XGBoostModel():
 
         return results['loss']
 
-      study = optuna.create_study(direction='minimize',
-                                  sampler=optuna.samplers.TPESampler(
-                                      seed=self.seed))
+      study = optuna.create_study(direction='minimize'
+#                                   sampler=optuna.samplers.TPESampler(
+#                                       seed=self.seed)
+                                 )
       optimize = study.optimize(optuna_objective, n_trials=self.max_evals)
 
       if not os.path.exists('XGBoost_trials'):
@@ -478,7 +482,7 @@ class XGBoostModel():
         value of the loss function using the Random Search optimization
         algorithm.
       """
-      random.seed(self.seed)
+#       random.seed(self.seed)
       print('Starting Random Search hyperparameter tuning...')
       self.trials = pd.DataFrame(columns=['params',
                                           'loss',
@@ -622,15 +626,20 @@ class XGBoostModel():
       elif self.optim_type == 'optuna':
         self.optuna_tuning()
       elif self.optim_type == 'random_search':
-        random.seed(self.seed)
+#         random.seed(self.seed)
         self.random_search_tuning()
 
       self.output[self.optim_type] = {}
       self.output[self.optim_type]['params'] = self.best_params
+      self.output[self.optim_type]['n_estimators'] = self.estimators
+      self.output[self.optim_type]['optimization_time (hours)'] = np.round(self.opt_time, 2)
       
+      
+      self.best_params['eta'] = 0.1
       start = timer()
-      self.best_model = xgb.train(self.best_params, self.dtrain)
+      self.best_model = xgb.train(self.best_params, self.dtrain, num_boost_round=self.estimators, feval=f1_eval)
       self.train_time = timer() - start
+      self.output[self.optim_type]['train_time (seconds)'] = np.round(self.train_time, 2)
       pickle.dump(self.best_model, open('XGBoost_' + self.optim_type + "_model.dat", "wb"))
       self.trained = True
       self.train_predictions = self.best_model.predict(self.dtrain)
@@ -656,8 +665,6 @@ class XGBoostModel():
       self.predictions = self.best_model.predict(self.dtest)
       score = log_loss(self.y_test, np.float64(self.predictions))
       self.output[self.optim_type]['score'] = score
-      self.output[self.optim_type]['train_time'] = self.train_time
-      self.output[self.optim_type]['optimization_time'] = self.time_end
         
       self.tested = True
       print('Testing Results: ')
@@ -702,3 +709,16 @@ class XGBoostModel():
       if not os.path.exists('XGBoost_Plots'):
         os.makedirs('XGBoost_Plots')
       plt.savefig('XGBoost_Plots/XGBoost_' + self.optim_type + '_FeatureImportance.png')
+    
+    def f1_obj(self, predt, dtrain):
+        y = dtrain.get_label()
+        eps = 1e-15
+        tp = np.sum([1 if (y[i]==1 and predt[i]==1) else 0 for i in range(len(y))]) + eps
+        fp = np.sum([1 if (y[i]==0 and predt[i]==1) else 0 for i in range(len(y))]) + eps
+        fn = np.sum([1 if (y[i]==1 and predt[i]==0) else 0 for i in range(len(y))]) + eps
+        precision = tp/(tp+fp)
+        recall = tp/(tp+fn)
+        
+        f1 = 2*precision*recall/(precision+recall)
+        
+        return 'F1', float(f1)
