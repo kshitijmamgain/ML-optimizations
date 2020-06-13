@@ -40,10 +40,10 @@ def create_xy(df, target):
 	"""
 	if isinstance(target, str):
 		X = df.drop(columns=target)
-		y = df.loc[:, target]
+		y = df.loc[:, target].values
 	elif isinstance(target, int):
 		X = df.drop(columns=df.columns[target])
-		y = df.iloc[:, target]
+		y = df.iloc[:, target].values
 
 	return X, y
 
