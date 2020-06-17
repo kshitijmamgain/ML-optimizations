@@ -1,7 +1,7 @@
 # Draft Codes
 # coding: utf-8
 ''' This class tunes hyperparamter for LightGBM ML algorithm for Higgs dataset'''
-import ast 
+import ast
 import csv
 import os
 from timeit import default_timer as timer
@@ -76,7 +76,7 @@ H_SPACE = {
 class Lgbmclass():
     '''Parameter Tuning Class tunes the LightGBM model with different optimization techniques -
     Hyperopt, Optuna and RandomSearch.'''
-    
+
     def __init__(self, x_train, y_train):
         '''Initializes the Parameter tuning class and also initializes LightGBM dataset object
         Parameters
@@ -90,14 +90,15 @@ class Lgbmclass():
         # File to save first results
         self.out_file = RESULT_PATH
         try:
-            with open(self.out_file,'r',newline='') as of_connection:
+            with open(self.out_file, 'r', newline='') as of_connection:
                 writer = csv.writer(of_connection)
                 print('lgbm csv present would load the result...')
         except:
             with open(self.out_file, 'w', newline='') as of_connection:
                 writer = csv.writer(of_connection)
                 # Write the headers to the file
-                writer.writerow(['loss', 'params', 'iteration', 'estimators', 'train_time','optim_type'])
+                writer.writerow(['loss', 'params', 'iteration', 'estimators', 
+                                 'train_time', 'optim_type'])
                 print('creating lgbm csv file to print result...')
 
         self.x_train = x_train
@@ -118,7 +119,7 @@ class Lgbmclass():
         diagnostic = False (default) -> Best parameters from optimization
         diagnostic = True -> Trial list from optimization
         '''
-        methodlist = ['hyperopt_space','optuna_space','random_search_space']
+        methodlist = ['hyperopt_space', 'optuna_space', 'random_search_space']
         optim_type = op_type + '_space'
         self.device = device
         if optim_type not in methodlist:
@@ -126,7 +127,7 @@ class Lgbmclass():
                             '\n\t\t hyperopt, optuna or random_search')
         tuner = getattr(self, optim_type)
         if diagnostic:
-            return(tuner())
+            return tuner()
         else:
             tuner()
             return self.params
@@ -141,7 +142,6 @@ class Lgbmclass():
         ------
         Loss, params, n_estimators, run_time'''
         # initializing the timer
-         
         start = timer()
         params['device'] = self.device
         params['is_unbalance'] = True
@@ -150,11 +150,11 @@ class Lgbmclass():
         if optim_type == 'optuna':
             cv_results = lgbo.cv(params, self.train_set, num_boost_round=NUM_BOOST_ROUNDS,
                                  nfold=N_FOLDS, early_stopping_rounds=EARLY_STOPPING_ROUNDS,
-                                 feval=f1_eval,metrics=EVAL_METRIC, verbose_eval=True, seed=SEED)
+                                 feval=f1_eval, metrics=EVAL_METRIC, verbose_eval=True, seed=SEED)
         else:
             cv_results = lgb.cv(params, self.train_set, num_boost_round=NUM_BOOST_ROUNDS,
                                 nfold=N_FOLDS, early_stopping_rounds=EARLY_STOPPING_ROUNDS,
-                                feval=f1_eval,metrics=EVAL_METRIC, verbose_eval=True, seed=SEED)
+                                feval=f1_eval, metrics=EVAL_METRIC, verbose_eval=True, seed=SEED)
         # store the runtime
         run_time = timer() - start
 
@@ -185,11 +185,10 @@ class Lgbmclass():
         trials: Hyperopt base trials object
         Returns
         -------
-        result: best parameter that minimizes the fn_name over max_evals = MAX_EVALS FIXED FOR TESTING
+        result: best parameter that minimizes the fn_name over max_evals = MAX_EVALS 
         trials: the database in which to store all the point evaluations of the search'''
         print('Running {} rounds of LGBM parameter optimisation using Hyperopt:'.format(MAX_EVALS))
-        fn_name, params, algo ='hyperopt_obj', H_SPACE, tpe.suggest
-        fn = getattr(self, fn_name)
+        fn_name, params, algo = 'hyperopt_obj', H_SPACE, tpe.suggest
         try:
             trials = pickle.load(open("lgb_hyperopt.p","rb"))
         except:
@@ -197,20 +196,20 @@ class Lgbmclass():
         self.iteration = 0
         # create checkpoints
         step = STEP # save trial for after every 20 trials
-        for i in range(1, MAX_EVALS + 1, STEP):
+        for i in range(1, MAX_EVALS + 1, step):
             # fmin runs until the trials object has max_evals elements in it, so it can do evaluations in chunks like this
             # each step 'best' will be the best trial so far
             # each step 'trials' will be updated to contain every result
             # you can save it to reload later in case of a crash, or you decide to kill the script
             try:
-                trials = pickle.load(open("lgb_hyperopt.p","rb"))
+                trials = pickle.load(open("lgb_hyperopt.p", "rb"))
                 print('loading from saved pickle file... starting from {}'.format(len(trials.trials)))
             except:
                 trials = Trials()
                 print('creating new trials')
             result = fmin(fn=self.hyperopt_obj, space=params, algo=algo, max_evals=i,
                           trials=trials, rstate=np.random.RandomState(SEED))
-            pickle.dump(trials, open("lgb_hyperopt.p","wb"))
+            pickle.dump(trials, open("lgb_hyperopt.p", "wb"))
         self.params = trials.best_trial['result']['params']
         #self.params['n_estimators'] = self.estimator
         return result, trials
@@ -260,8 +259,8 @@ class Lgbmclass():
                                     load_if_exists=True, sampler=optuna.samplers.TPESampler(seed=SEED))
         
         step = STEP # save trial for after every 20 trials
-        for i in range(1, MAX_EVALS + 1, STEP):
-            study.optimize(fn, n_trials=MAX_EVALS)
+        for i in range(1, MAX_EVALS + 1, step):
+            study.optimize(fn, n_trials=i)
         
         self.params = study.best_params
         #self.params['n_estimators'] = self.estimator
@@ -276,7 +275,7 @@ class Lgbmclass():
             'lambda_l2': trial.suggest_loguniform("lambda_l2", 1e-8, 10.0),
             'min_data_in_leaf' : trial.suggest_int('min_data_in_leaf', 20, 500),
             'boosting_type': trial.suggest_categorical('boosting_type', ['gbdt', 'goss']),
-            'subsample_for_bin': trial.suggest_int('subsample_for_bin',20000, 300000, 20000),
+            'subsample_for_bin': trial.suggest_int('subsample_for_bin', 20000, 300000, 20000),
             'feature_fraction': trial.suggest_uniform("feature_fraction", 0.4, 1.0),
             'bagging_freq': trial.suggest_int("bagging_freq", 1, 7),
             'verbosity' : 0,
