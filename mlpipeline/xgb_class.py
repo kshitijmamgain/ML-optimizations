@@ -131,7 +131,6 @@ class XGBoostModel():
       cv_score = np.min(cv_results['test-F1-mean'])
       cv_var = np.min(cv_results['test-F1-std'])**2
       n_estimators = int(np.argmin(cv_results['test-F1-mean']) + 1)
-      self.estimators = n_estimators
       results = {'loss': cv_score, 'variance': cv_var, 'params': space,
                  'n_estimators': n_estimators, 'time': end - start}
 
@@ -166,40 +165,22 @@ class XGBoostModel():
           optimization algorithm
         """
 
-        grow_policy = [{'grow_policy': 'depthwise'},
-                       {'grow_policy': 'lossguide'}]
 
-        booster = [{'booster': 'gbtree'}
-                  #  {'booster': 'dart',
-                  #   'sample_type': hp.choice('sample_type', ['uniform',
-                  #                                            'weighted']),
-                  #   'normalize_type': hp.choice('normalize_type', ['tree',
-                  #                                                  'forest']),
-                  #   'rate_drop': hp.quniform('rate_drop', 0, 0.5, 0.1),
-                  #   'skip_drop': hp.quniform('skip_drop', 0, 0.5, 0.1)}
-                    ]
-
-        # max_bin = hp.choice('max_bin', [2**6-1, 2**7-1, 2**8-1, 2**9-1, 2**10-1])
         if self.GPU:
           tree_method = [{'tree_method': 'gpu_hist',
                           'single_precision_histogram': hp.choice(
                                   'single_precision_histogram', [True, False]),
                           'deterministic_histogram': hp.choice(
                                   'deterministic_histogram', [True, False])
-                          # 'max_bin': max_bin
-                          }
-                          ]
+                         }]
           subsample = hp.quniform('subsample', 0.1, 1, 0.1)
 
         else:
           tree_method = [
-                        #   {'tree_method': 'auto'},
-                        #  {'tree_method': 'exact'},
-                         {'tree_method': 'hist'},
-                          # 'max_bin': max_bin},
-                         {'tree_method': 'approx'}
-                          # 'sketch_eps': hp.quniform('sketch_eps', 0.005, 0.05, 0.005)}
-                          ]
+                         {'tree_method': 'hist',
+                          'grow_policy': hp.choice('grow_policy', ['lossguide', 'depthwise'])
+                         },
+                         {'tree_method': 'approx'}]
           subsample = hp.quniform('subsample', 0.5, 1, 0.1)
 
         params = {
@@ -207,24 +188,21 @@ class XGBoostModel():
                   'eval_metric': 'logloss',
                   'verbosity': 1,
                   'disable_default_eval_metric': 1,
-                  'booster': hp.choice('booster', booster),
+                  'booster': 'gbtree',
                   'reg_lambda': hp.loguniform('reg_lambda', -3*np.log(10), 2*np.log(10)),
                   'reg_alpha': hp.loguniform('reg_alpha', -3*np.log(10), 2*np.log(10)),
-                  # 'max_delta_step': hp.quniform('max_delta_step', 0, 5, 1),
-                  'max_depth': hp.choice('max_depth', np.arange(3, 12,
+                  'max_depth': hp.choice('max_depth', np.arange(4, 12,
                                                                 dtype=int)),
-                  'eta': 0.5,
                   'gamma': hp.loguniform('gamma', -3*np.log(10), 2*np.log(10)),
-                  'grow_policy': hp.choice('grow_policy', grow_policy),
                   'subsample': subsample,
                   'sampling_method': 'uniform',
-                  'min_child_weight': hp.loguniform('min_child_weight', -3*np.log(10), 2*np.log(10)),
                   'colsample_bytree': hp.quniform('colsample_bytree',
                                                   0.5, 1, 0.1),
                   'colsample_bylevel': hp.quniform('colsample_bylevel',
                                                    0.5, 1, 0.1),
                   'colsample_bynode': hp.quniform('colsample_bynode',
                                                   0.5, 1, 0.1),
+                  'nthread': 4,
                   'tree_method': hp.choice('tree_method', tree_method),
                   'scale_pos_weight': self.ratio,
                   'predictor': 'cpu_predictor'
@@ -255,28 +233,14 @@ class XGBoostModel():
         """
         if not isinstance(space, dict):
           raise TypeError('Parameters must be provided as a dictionary')
+        
+        space['max_depth'] = int(space['max_depth'])
 
-        if space['grow_policy']['grow_policy'] == 'lossguide':
-              space['max_leaves'] = 2**space['max_depth']-1
-
-        if space['booster']['booster'] == 'dart':
-              sample_type = space['booster'].get('sample_type')
-              normalize_type = space['booster'].get('normalize_type')
-              rate_drop = space['booster'].get('rate_drop')
-              skip_drop = space['booster'].get('skip_drop')
-              space['sample_type'] = sample_type
-              space['normalize_type'] = normalize_type
-              space['rate_drop'] = rate_drop
-              space['skip_drop'] = skip_drop
-
-        # if space['tree_method']['tree_method'] == 'approx':
-        #       sketch_eps = space['tree_method'].get('sketch_eps')
-        #       space['sketch_eps'] = sketch_eps
-
-        # if space['tree_method']['tree_method'] not in ['approx',
-        #                                                'auto', 'exact']:
-        #       max_bin = space['tree_method'].get('max_bin')
-        #       space['max_bin'] = int(max_bin)
+        if space['tree_method']['tree_method'] == 'hist':
+              grow_policy = space['tree_method'].get('grow_policy')
+              space['grow_policy'] = grow_policy
+              if space['grow_policy']=='lossguide':
+                space['max_leaves'] = 2**space['max_depth']-1
 
         if space['tree_method']['tree_method'] == 'gpu_hist':
               single_precision_histogram = space['tree_method'].get(
@@ -288,8 +252,6 @@ class XGBoostModel():
               space['sampling_method'] = 'gradient_based'
               space['predictor'] = 'gpu_predictor'
 
-        space['grow_policy'] = space['grow_policy']['grow_policy']
-        space['booster'] = space['booster']['booster']
         space['tree_method'] = space['tree_method']['tree_method']
 
         print('Training with params: ')
@@ -329,8 +291,10 @@ class XGBoostModel():
         os.makedirs('XGBoost_trials')
       self.trials.to_csv('XGBoost_trials/hyperopt_trials.csv')
 
-      best = self.trials[['params', 'loss']].sort_values(
+      best = self.trials[['params', 'loss', 'n_estimators']].sort_values(
                                     by='loss', ascending=True).reset_index().loc[0].to_dict()
+        
+      self.estimators = best['n_estimators']  
       best = best['params']
       self.best_params = best
       print('The best HyperOpt hyperparameters are: ')
@@ -635,7 +599,7 @@ class XGBoostModel():
       self.output[self.optim_type]['optimization_time (hours)'] = np.round(self.opt_time, 2)
       
       
-      self.best_params['eta'] = 0.1
+      self.best_params['eta'] = 0.05
       start = timer()
       self.best_model = xgb.train(self.best_params, self.dtrain, num_boost_round=self.estimators, feval=f1_eval)
       self.train_time = timer() - start
@@ -709,16 +673,3 @@ class XGBoostModel():
       if not os.path.exists('XGBoost_Plots'):
         os.makedirs('XGBoost_Plots')
       plt.savefig('XGBoost_Plots/XGBoost_' + self.optim_type + '_FeatureImportance.png')
-    
-    def f1_obj(self, predt, dtrain):
-        y = dtrain.get_label()
-        eps = 1e-15
-        tp = np.sum([1 if (y[i]==1 and predt[i]==1) else 0 for i in range(len(y))]) + eps
-        fp = np.sum([1 if (y[i]==0 and predt[i]==1) else 0 for i in range(len(y))]) + eps
-        fn = np.sum([1 if (y[i]==1 and predt[i]==0) else 0 for i in range(len(y))]) + eps
-        precision = tp/(tp+fp)
-        recall = tp/(tp+fn)
-        
-        f1 = 2*precision*recall/(precision+recall)
-        
-        return 'F1', float(f1)
