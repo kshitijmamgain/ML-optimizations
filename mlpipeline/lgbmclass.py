@@ -18,15 +18,26 @@ import pickle
 import sqlite3
 import yaml
 # defining constant
-with open('config_lgb.yml') as file:
+with open('mlpipeline/config_lgb.yml') as file:
     config_lgb = yaml.safe_load(file)
-# defining constant
+
+# defining optimization info
 MAX_EVALS = config_lgb['constant']['max_evals']
-N_FOLDS = config_lgb['constant']['n_folds']
-NUM_BOOST_ROUNDS = config_lgb['constant']['num_boost_rounds']
-EARLY_STOPPING_ROUNDS = config_lgb['constant']['early_stopping_rounds']
 SEED = config_lgb['constant']['seed']
 STEP = config_lgb['constant']['checkpoint']
+
+# model parameters configuration
+N_FOLDS = config_lgb['parameter']['n_folds']
+NUM_BOOST_ROUNDS = config_lgb['parameter']['num_boost_rounds']
+EARLY_STOPPING_ROUNDS = config_lgb['parameter']['early_stopping_rounds']
+VERBOSITY = config_lgb['parameter']['verbosity']
+OBJECTIVE = config_lgb['parameter']['objective']
+EVAL_METRIC = config_lgb['parameter']['eval']
+OPTIMIZATION_ETA = config_lgb['parameter']['op_eta']
+TESTING_ETA = config_lgb['parameter']['test_eta']
+UNBALANCED = config_lgb['parameter']['unbalanced']
+VERBOSE_EVAL = config_lgb['parameter']['verbose_eval']
+
 
 RESULT_PATH = 'lgbm.csv'
 OBJECTIVE_LOSS = 'binary' # use cross_entropy
@@ -39,38 +50,28 @@ def f1_eval(pred, data):
 
 # random search
 PARAM_GRID = {
-    'num_leaves': list(range(16, 196, 4)),
-    'max_bin': [255],
-    'lambda_l1': list(np.linspace(0, 1)),
-    'lambda_l2': list(np.linspace(0, 1)),
+    'max_depth': list(range(6, 12, 1)),
+    'lambda_l1': list(np.linspace(0, 0.5)),
+    'lambda_l2': list(np.linspace(0, 0.5)),
     'min_data_in_leaf' : list(range(20, 500, 10)),
     'boosting_type': ['gbdt', 'goss'],
-    #'learning_rate' : list(np.logspace(np.log(0.05), np.log(0.2), base=np.exp(1), num=1000)),
     'feature_fraction': list(np.linspace(0.4, 1.0)),
-    'subsample_for_bin': list(range(20000, 300000, 20000)),
-    'bagging_freq': list(range(1, 7)),
-    'verbosity' : [0],
-    'objective' : [OBJECTIVE_LOSS]
     }
 
 
 # Hyperopt Space
+max_depth = hp.quniform('max_depth', 6, 14, 1)
 H_SPACE = {
-    #'num_leaves': hp.quniform('num_leaves', 16, 196, 4),
-    #'max_bin' : 255, #if using CPU just set this to 255
+    'max_depth': max_depth,
+    'num_leaves': hp.quniform('num_leaves', 30, 2**max_depth-1, 10),
     'lambda_l1': hp.uniform('lambda_l1', 0.0, 0.5),
     'lambda_l2': hp.uniform("lambda_l2", 0.0, 0.5),
-    #'min_data_in_leaf' : hp.quniform('min_data_in_leaf', 30, 500, 20),
+    'min_data_in_leaf' : hp.quniform('min_data_in_leaf', 30, 500, 20),
     'boosting_type': hp.choice('boosting_type',
                                [{'boosting_type': 'gbdt',
                                  'subsample': hp.uniform('gdbt_subsample', 0.5, 1)},
                                 {'boosting_type': 'goss', 'subsample': 1.0}]),
-    'learning_rate' : 0.2,
-    #'subsample_for_bin': hp.quniform('subsample_for_bin', 20000, 300000, 20000),
     'feature_fraction': hp.uniform('feature_fraction', 0.4, 1.0),
-    #'bagging_freq': hp.uniform('bagging_freq', 1, 7),
-    'verbosity' : 0,
-    'objective' : OBJECTIVE_LOSS
     }
 
 class Lgbmclass():
@@ -189,10 +190,7 @@ class Lgbmclass():
         trials: the database in which to store all the point evaluations of the search'''
         print('Running {} rounds of LGBM parameter optimisation using Hyperopt:'.format(MAX_EVALS))
         fn_name, params, algo = 'hyperopt_obj', H_SPACE, tpe.suggest
-        try:
-            trials = pickle.load(open("lgb_hyperopt.p","rb"))
-        except:
-            trials = Trials()
+
         self.iteration = 0
         # create checkpoints
         step = STEP # save trial for after every 20 trials
@@ -268,26 +266,22 @@ class Lgbmclass():
 
     def optuna_obj(self, trial):
         '''Defining the parameters space inside the function for optuna optimization'''
+        max_depth = trial.suggest_int('max_depth', 6, 14, 1)
         params = {
-            'num_leaves': trial.suggest_int('num_leaves', 16, 196, 4),
-            'max_bin' : 255,
-            'lambda_l1': trial.suggest_loguniform('lambda_l1', 1e-8, 10.0),
-            'lambda_l2': trial.suggest_loguniform("lambda_l2", 1e-8, 10.0),
+            'max_depth': max_depth,
+            'num_leaves': trial.suggest_int('num_leaves', 16, 2**max_depth, 10),
+            'lambda_l1': trial.suggest_loguniform('lambda_l1', 0.5, 1),
+            'lambda_l2': trial.suggest_loguniform("lambda_l2", 0.5, 1),
             'min_data_in_leaf' : trial.suggest_int('min_data_in_leaf', 20, 500),
             'boosting_type': trial.suggest_categorical('boosting_type', ['gbdt', 'goss']),
-            'subsample_for_bin': trial.suggest_int('subsample_for_bin', 20000, 300000, 20000),
             'feature_fraction': trial.suggest_uniform("feature_fraction", 0.4, 1.0),
-            'bagging_freq': trial.suggest_int("bagging_freq", 1, 7),
-            'verbosity' : 0,
-            'objective' : OBJECTIVE_LOSS
                 }
 
         optim_type = 'Optuna'
         self.iteration += 1
 
         # Make sure parameters that need to be integers are integers
-        for parameter_name in ['num_leaves', 'min_data_in_leaf',
-                               'max_bin', 'bagging_freq']:
+        for parameter_name in ['num_leaves', 'min_data_in_leaf']:
             params[parameter_name] = int(params[parameter_name])
 
         # Perform n_folds cross validation
@@ -320,7 +314,7 @@ class Lgbmclass():
         #sort values by the loss
         random_results.sort_values('loss', ascending = True, inplace = True)
         self.params = random_results.loc[0, 'params']
-        self.params['n_estimators'] = self.estimator
+        #self.params['n_estimators'] = self.estimator
         return random_results
 
     def randomsrch_obj(self, params, iteration):
@@ -339,6 +333,8 @@ class Lgbmclass():
             # Subsample supported for gdbt and dart
             params['subsample'] = random.sample(subsample_dist, 1)[0]
 
+        num_leaves = list(range(30, 2**params['max_depth'], 10))
+        params['num_leaves'] = random.sample(num_leaves, 1)[0]
         # Perform n_folds cross validation
         loss, params, n_estimators, run_time = self.lgb_crossval(params, optim_type)
 
