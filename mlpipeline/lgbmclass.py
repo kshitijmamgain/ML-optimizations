@@ -48,10 +48,25 @@ PARAM_GRID = {
     'objective' : [OBJECTIVE_LOSS]
     }
 
+# Hyperopt Space
+H_SPACE = {
+    'num_leaves': hp.quniform('num_leaves', 31, 1023, 16),
+    'lambda_l1': hp.uniform('lambda_l1', 0.0, 0.5),
+    'lambda_l2': hp.uniform("lambda_l2", 0.0, 0.5),
+    'boosting_type': hp.choice('boosting_type',
+                               [{'boosting_type': 'gbdt',
+                                 'subsample': hp.uniform('gdbt_subsample', 0.5, 1)},
+                                {'boosting_type': 'goss', 'subsample': 1.0}]),
+    'learning_rate' : 0.2,
+    'feature_fraction': hp.uniform('feature_fraction', 0.4, 1.0),
+    'verbosity' : 0,
+    'objective' : OBJECTIVE_LOSS
+    }
+
 class Lgbmclass():
     '''Parameter Tuning Class tunes the LightGBM model with different optimization techniques -
     Hyperopt, Optuna and RandomSearch.'''
-
+    
     def __init__(self, x_train, y_train):
         '''Initializes the Parameter tuning class and also initializes LightGBM dataset object
         Parameters
@@ -65,15 +80,14 @@ class Lgbmclass():
         # File to save first results
         self.out_file = RESULT_PATH
         try:
-            with open(self.out_file, 'r', newline='') as of_connection:
+            with open(self.out_file,'r',newline='') as of_connection:
                 writer = csv.writer(of_connection)
                 print('lgbm csv present would load the result...')
         except:
             with open(self.out_file, 'w', newline='') as of_connection:
                 writer = csv.writer(of_connection)
                 # Write the headers to the file
-                writer.writerow(['loss', 'params', 'iteration', 'estimators', 
-                                 'train_time', 'optim_type'])
+                writer.writerow(['loss', 'params', 'iteration', 'estimators', 'train_time','optim_type'])
                 print('creating lgbm csv file to print result...')
 
         self.x_train = x_train
@@ -94,15 +108,15 @@ class Lgbmclass():
         diagnostic = False (default) -> Best parameters from optimization
         diagnostic = True -> Trial list from optimization
         '''
-        methodlist = ['hyperopt_space', 'optuna_space', 'random_search_space']
+        methodlist = ['hyperopt_space','optuna_space','random_search_space']
         optim_type = op_type + '_space'
         self.device = device
         if optim_type not in methodlist:
-            raise TypeError('Otimization type must have a valid space:',
+            raise TypeError('Optimization type must have a valid space:',
                             '\n\t\t hyperopt, optuna or random_search')
         tuner = getattr(self, optim_type)
         if diagnostic:
-            return tuner()
+            return(tuner())
         else:
             tuner()
             return self.params
@@ -117,20 +131,18 @@ class Lgbmclass():
         ------
         Loss, params, n_estimators, run_time'''
         # initializing the timer
+         
         start = timer()
         params['device'] = self.device
-        params['is_unbalance'] = True
-        params['learning_rate'] = 0.2
-        params['num_threads'] = 8
-        #params['scale_pos_weight'] = self.ratio
+        #params['is_unbalance'] = True
         if optim_type == 'optuna':
             cv_results = lgbo.cv(params, self.train_set, num_boost_round=NUM_BOOST_ROUNDS,
                                  nfold=N_FOLDS, early_stopping_rounds=EARLY_STOPPING_ROUNDS,
-                                 feval=f1_eval, metrics=EVAL_METRIC, verbose_eval=True, seed=SEED)
+                                 feval=f1_eval,metrics=EVAL_METRIC, verbose_eval=True, seed=SEED)
         else:
             cv_results = lgb.cv(params, self.train_set, num_boost_round=NUM_BOOST_ROUNDS,
                                 nfold=N_FOLDS, early_stopping_rounds=EARLY_STOPPING_ROUNDS,
-                                feval=f1_eval, metrics=EVAL_METRIC, verbose_eval=True, seed=SEED)
+                                feval=f1_eval,metrics=EVAL_METRIC, verbose_eval=True, seed=SEED)
         # store the runtime
         run_time = timer() - start
 
@@ -161,47 +173,32 @@ class Lgbmclass():
         trials: Hyperopt base trials object
         Returns
         -------
-        result: best parameter that minimizes the fn_name over max_evals = MAX_EVALS 
+        result: best parameter that minimizes the fn_name over max_evals = MAX_EVALS FIXED FOR TESTING
         trials: the database in which to store all the point evaluations of the search'''
         print('Running {} rounds of LGBM parameter optimisation using Hyperopt:'.format(MAX_EVALS))
-        # Hyperopt Space
-        self.h_max_depth = hp.quniform('max_depth', 6, 12, 1)
-        H_SPACE = {
-            'num_leaves': hp.quniform('num_leaves', 31, 2047, 16),
-            'lambda_l1': hp.uniform('lambda_l1', 0.0, 0.5),
-            'lambda_l2': hp.uniform("lambda_l2", 0.0, 0.5),
-            'boosting_type': hp.choice('boosting_type',
-                                       [{'boosting_type': 'gbdt',
-                                         'subsample': hp.uniform('gdbt_subsample', 0.5, 1)},
-                                        {'boosting_type': 'goss', 'subsample': 1.0}]),
-            'learning_rate' : 0.2,
-            'feature_fraction': hp.uniform('feature_fraction', 0.4, 1.0),
-            'verbosity' : 0,
-            'objective' : OBJECTIVE_LOSS
-            }
-        
-        fn_name, params, algo = 'hyperopt_obj', H_SPACE, tpe.suggest
+        fn_name, params, algo ='hyperopt_obj', H_SPACE, tpe.suggest
+        fn = getattr(self, fn_name)
         try:
             trials = pickle.load(open("lgb_hyperopt.p","rb"))
         except:
             trials = Trials()
         self.iteration = 0
         # create checkpoints
-        step = STEP # save trial for after every 20 trials
-        for i in range(1, MAX_EVALS + 1, step):
+        step = 10 # save trial for after every 20 trials
+        for i in range(1, MAX_EVALS + 1, STEP):
             # fmin runs until the trials object has max_evals elements in it, so it can do evaluations in chunks like this
             # each step 'best' will be the best trial so far
             # each step 'trials' will be updated to contain every result
             # you can save it to reload later in case of a crash, or you decide to kill the script
             try:
-                trials = pickle.load(open("lgb_hyperopt.p", "rb"))
+                trials = pickle.load(open("lgb_hyperopt.p","rb"))
                 print('loading from saved pickle file... starting from {}'.format(len(trials.trials)))
             except:
                 trials = Trials()
                 print('creating new trials')
             result = fmin(fn=self.hyperopt_obj, space=params, algo=algo, max_evals=i,
                           trials=trials, rstate=np.random.RandomState(SEED))
-            pickle.dump(trials, open("lgb_hyperopt.p", "wb"))
+            pickle.dump(trials, open("lgb_hyperopt.p","wb"))
         self.params = trials.best_trial['result']['params']
         #self.params['n_estimators'] = self.estimator
         return result, trials
@@ -218,6 +215,8 @@ class Lgbmclass():
         # Extract the boosting type
         params['boosting_type'] = params['boosting_type']['boosting_type']
         params['subsample'] = subsample
+        params['learning_rate'] = 0.2
+        params['scale_pos_weight'] = self.ratio
 
         # Make sure parameters that need to be integers are integers
         for parameter_name in ['num_leaves']:
@@ -250,8 +249,10 @@ class Lgbmclass():
                                     load_if_exists=True, sampler=optuna.samplers.TPESampler(seed=SEED))
         
         step = STEP # save trial for after every 20 trials
-        for i in range(1, MAX_EVALS + 1, step):
+        for i in range(1, MAX_EVALS + 1, STEP):
+
             study.optimize(fn, n_trials=i)
+            print('creating checkpoint')
         
         self.params = study.best_params
         #self.params['n_estimators'] = self.estimator
@@ -264,6 +265,7 @@ class Lgbmclass():
             'lambda_l1': trial.suggest_loguniform('lambda_l1', 1e-8, 10.0),
             'lambda_l2': trial.suggest_loguniform("lambda_l2", 1e-8, 10.0),
             'boosting_type': trial.suggest_categorical('boosting_type', ['gbdt', 'goss']),
+            'learning_rate' : 0.2,
             'feature_fraction': trial.suggest_uniform("feature_fraction", 0.4, 1.0),
             'verbosity' : 0,
             'objective' : OBJECTIVE_LOSS
@@ -352,7 +354,8 @@ class Lgbmclass():
         for parameter_name in ['num_leaves', 'subsample_for_bin', 'min_data_in_leaf',
                                'max_bin', 'bagging_freq']:
             best[parameter_name] = int(best[parameter_name])
-        self.gbm = lgb.train(best, self.train_set)
+        self.gbm = lgb.train(best, self.train_set,
+                             feature_name=['f' + str(i + 1) for i in range(self.x_train.shape[-1])])
         self.pred = self.gbm.predict(x_test)
         print("Model will be trained with best parameters obtained from {} ... \n\n\n".format(optim_type))
         print("Model trained on the following parameters: \n{}".format(best))
