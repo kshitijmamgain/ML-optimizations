@@ -1,18 +1,14 @@
 constant:
     'max_evals': 101
+    'n_folds': 5
+    'num_boost_rounds': 10000
+    'early_stopping_rounds': 100
     'seed': 47
     'checkpoint': 10
 
-parameter: # parameter configuration for CV
-    'objective': 'binary'
-    'metrics': 'logloss'
-    'n_folds': 5    
-    'num_boost_rounds': 10000
-    'early_stopping_rounds': 100
-    'verbosity': 0
-    'learning_rate': 0.2
-    'is_unbalance': True
-    'verbose_eval': True
+hyperparameter:
+    'loss': 'binary'
+    'eval': 'logloss'
     
 results:
     'result': 'lgbm.csv'
