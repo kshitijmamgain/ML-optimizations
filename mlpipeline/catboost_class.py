@@ -5,75 +5,83 @@ import optuna
 import numpy as np
 import pandas as pd
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import (auc, accuracy_score, roc_auc_score, roc_curve, confusion_matrix, 
+from sklearn.metrics import (f1_score, auc, accuracy_score, roc_auc_score, roc_curve, confusion_matrix, 
                              precision_recall_curve, classification_report)
 from hyperopt import STATUS_OK, STATUS_FAIL, hp, tpe, Trials, fmin
 import matplotlib.pyplot as plt
 import catboost as cb
 from catboost import CatBoost
 import shap
+import pickle
+import math
 
 
 #GLOBAL HYPEROPT PARAMETERS
 N_FOLDS = 5 #number of cross-validation folds on data in each evaluation round
-MAX_EVALS = 50 #number of hyperopt evaluation rounds
+MAX_EVALS = 10 #number of hyperopt evaluation rounds
 #CATBOOST PARAMETERS
 CB_MAX_DEPTH = 16 #maximum tree depth in CatBoost
 OBJECTIVE_CB_REG = 'MAE' #CatBoost regression metric
 OBJECTIVE_CB_CLASS = 'Logloss' #CatBoost classification metric
-NUM_BOOST_ROUNDS = 10
-EARLY_STOPPING_ROUNDS = 2
-SEED = 50
+NUM_BOOST_ROUNDS = 10000
+EARLY_STOPPING_ROUNDS = 100
+STEP = 1 
+SEED = 47
+
 
 # random search
 PARAM_GRID = {
-    'l2_leaf_reg': list(range( 0, 2, 1)),
-    'learning_rate' : list(np.logspace(np.log(1e-3), np.log(5e-1), base=np.exp(1), num=1000)),
+    'l2_leaf_reg': list(np.logspace( 1, 10)),
+    'learning_rate' : [0.30],
     'depth': list(range(1,CB_MAX_DEPTH,1)),
     'loss_function': ['Logloss'],
     'border_count': list(range( 32, 128, 1)),
     'bootstrap_type': ['Bayesian', 'Bernoulli'],
     'grow_policy': ['SymmetricTree', 'Depthwise', 'Lossguide'], 
-    'custom_loss' : ['AUC','F1','TotalF1','CrossEntropy','Logloss'],
+    #'custom_loss' : ['AUC','F1','TotalF1','CrossEntropy','Logloss'],
     'score_function': ['Cosine','L2'],
-    'eval_metric': ['AUC'],
+    'eval_metric': ['F1'],
     'min_data_in_leaf': list(range(1, 50, 1)),
     'od_type': ['IncToDec', 'Iter'],
     'task_type' : ['CPU'],
-    'leaf_estimation_backtracking': ['No', 'AnyImprovement']
+    'leaf_estimation_backtracking': ['No', 'AnyImprovement'],
+    'thread_count' : [8]
+    
   
 }
 
 
 # Hyperopt Space
 H_SPACE = {
-    'l2_leaf_reg': hp.qloguniform('l2_leaf_reg', 0, 2, 1),
-    'learning_rate': hp.uniform('learning_rate', 1e-3, 5e-1),
+    'l2_leaf_reg': hp.loguniform('l2_leaf_reg', 1, 10),
+    'learning_rate': 0.30,
     'depth': hp.quniform('depth', 1, CB_MAX_DEPTH, 1),
     'loss_function': hp.choice('loss_function', ['Logloss']), # RMSE and #MAE and Poisson for regression
     'border_count': hp.quniform('border_count', 32, 128, 1),
     'bootstrap_type': hp.choice('bootstrap_type', 
                                 [{'bootstrap_type': 'Bayesian', 
-                                  'bagging_temperature': hp.loguniform('bagging_temperature', np.log(1), np.log(5e5))},
+                                  'bagging_temperature': hp.uniform('bagging_temperature', 0, 1)},
                                  {'bootstrap_type': 'Bernoulli'}]),
     'grow_policy': hp.choice('grow_policy', 
                             [{'grow_policy': 'SymmetricTree'}, {'grow_policy': 'Depthwise'},
                              {'grow_policy': 'Lossguide', 
                               'max_leaves': hp.quniform('max_leaves', 2, 32, 1)}]),
 
-    'custom_loss' : hp.choice('custom_loss', ['AUC','F1','TotalF1','CrossEntropy','Logloss']),
+    #'custom_loss' : hp.choice('custom_loss', ['AUC','F1','TotalF1','CrossEntropy','Logloss']),
     'score_function': hp.choice('score_function', ['Cosine','L2']),
-    'eval_metric': hp.choice('eval_metric', ['AUC']),
+    'eval_metric': hp.choice('eval_metric', ['F1']),
     'min_data_in_leaf': hp.quniform('min_data_in_leaf', 1, 50, 1),
     'od_type': hp.choice('od_type', ['IncToDec', 'Iter']),
     'task_type' : 'CPU',
-    'leaf_estimation_backtracking': hp.choice('leaf_estimation_backtracking', ['No', 'AnyImprovement'])
+    'leaf_estimation_backtracking': hp.choice('leaf_estimation_backtracking', ['No', 'AnyImprovement']),
+    'thread_count': 8
     }
 
 
 class Ctbclass():
     '''Catboost Class applying Hyperopt and Optuna techniques '''
     iteration = 0
+    
     def __init__(self, X_train, y_train , lossguide_verifier = False , GPU = False):
         '''Initializes Catboost Train dataset object
         Parameters
@@ -81,11 +89,15 @@ class Ctbclass():
         X_train: train data
         y_train: label data
         switch: GPU processing Vs CPU'''
+        self.estimator = None
+        self.loss = 1.0
         self.GPU = GPU
         self.X_train = X_train
         self.y_train = y_train
         self.lossguide_verifier = lossguide_verifier
         self.train_set = cb.Pool(self.X_train, self.y_train)
+        self.SCALE_POS_WEIGHT = (np.sum(self.y_train==0))/(np.sum(self.y_train==1))
+        
             
     def ctb_crossval(self, params, optim_type):
         '''catboost cross validation model
@@ -99,22 +111,28 @@ class Ctbclass():
         # initializing the timer
          
         start = timer()
+        print('trial using : ', params)
         
         cv_results = cb.cv(self.train_set, params, fold_count=N_FOLDS,
                            num_boost_round=NUM_BOOST_ROUNDS,
                            early_stopping_rounds=EARLY_STOPPING_ROUNDS,
-                           stratified=True, partition_random_seed=SEED,
+                           stratified=True, partition_random_seed=SEED,verbose_eval=True,
                            plot=False)
         # store the runtime
         run_time = timer() - start
         # Extract the best score
-        best_score = np.max(cv_results['test-AUC-mean'])
+        best_score = np.max(cv_results['test-F1-mean'])
         # Loss must be minimized
         loss = 1 - best_score
+        
         # Boosting rounds that returned the highest cv score
-        n_estimators = int(np.argmax(cv_results['test-AUC-mean']) + 1)
-        self.estimator = n_estimators
+        n_estimators = int(np.argmax(cv_results['test-F1-mean']) + 1)
+        if loss<self.loss:
+            self.estimator = n_estimators
+            self.loss = loss
+        
         #print(params)
+        
         return loss, params, n_estimators, run_time
 
     def train(self, hyperparameter_optimizer):
@@ -140,23 +158,52 @@ class Ctbclass():
         -------
         result: best parameter that minimizes the fn_name over max_evals = MAX_EVALS 
         trials: the database in which to store all the point evaluations of the search'''
-        fn_name, space, algo, trials='hyperopt_obj', H_SPACE, tpe.suggest, Trials()
+        fn_name, space, algo ='hyperopt_obj', H_SPACE, tpe.suggest
         if self.GPU == False:
             space.update({'rsm': hp.uniform('rsm', 0.1, 1),
-                          'random_strength': hp.loguniform('random_strength', 
-                                                           np.log(0.005), np.log(5))})
+                          'random_strength': hp.quniform('random_strength', 
+                                                           1, 20,1)})
         if self.GPU == True:
             space.update({'leaf_estimation_backtracking' : hp.choice ('leaf_estimation_backtracking',['Armijo', 'No', 'AnyImprovement'])})  
         if (self.lossguide_verifier == True) and (self.GPU == True):
-            space.update({'score_function': hp.choice('score_function',['L2', 'SolarL2', 'LOOL2', 'NewtonL2']),'thread_count': 2})
+            space.update({'score_function': hp.choice('score_function',['L2', 'SolarL2', 'LOOL2', 'NewtonL2'])})
         if (self.lossguide_verifier == False) and (self.GPU == True):
-            space.update({'score_function': hp.choice('score_function',['Cosine', 'L2', 'SolarL2', 'LOOL2', 'NewtonL2']),'thread_count': 2})
+            space.update({'score_function': hp.choice('score_function',['Cosine', 'L2', 'SolarL2', 'LOOL2', 'NewtonL2'])})
+        space.update({'scale_pos_weight':self.SCALE_POS_WEIGHT})
         fn = getattr(self, fn_name)
-        result = fmin(fn=fn, space= space, algo= algo, max_evals= MAX_EVALS,
-                          trials= trials, rstate= np.random.RandomState(SEED))
+        
+        
+        
+       
+        self.iteration = 0
+        # create checkpoints
+        step = STEP # save trial for after every 20 trials
+        for i in range(1, MAX_EVALS + 1, step):
+            # fmin runs until the trials object has max_evals elements in it, so it can do evaluations in chunks like this
+            # each step 'best' will be the best trial so far
+            # each step 'trials' will be updated to contain every result
+            # you can save it to reload later in case of a crash, or you decide to kill the script
+            try:
+                trials = pickle.load(open("ctb_hyperopt.p", "rb"))
+                print('loading from saved pickle file... starting from {}'.format(len(trials.trials)))
+            except:
+                trials = Trials()
+                print('creating new trials')
+            result = fmin(fn=fn, space= space, algo= algo, max_evals= MAX_EVALS,trials= trials, rstate= np.random.RandomState(SEED))
+            pickle.dump(trials, open("ctb_hyperopt.p", "wb"))
+        
+        
+          
+        
+#         try:
+#             result = fmin(fn=fn, space= space, algo= algo, max_evals= MAX_EVALS,
+#                           trials= trials, rstate= np.random.RandomState(SEED))
+#         except:
+#             pass
+            
         self.params = trials.best_trial['result']['params']
         self.params['n_estimators'] = self.estimator
-        print(result, trials)
+        #print(result)
         return trials,self.params
     
     def hyperopt_obj(self, params):
@@ -187,6 +234,7 @@ class Ctbclass():
         # Perform n_folds cross validation
         loss, params, n_estimators, run_time = self.ctb_crossval(params, optim_type)
         #Dictionary with information for evaluation
+        
         return {'loss':loss, 'params':params, 'iteration':self.iteration,
                 'estimators':n_estimators, 'train_time':run_time, 'status':STATUS_OK}
 
@@ -194,9 +242,13 @@ class Ctbclass():
         '''Optuna search space'''
         fn_name = 'optuna_obj'
         fn = getattr(self, fn_name)
-        study = optuna.create_study(direction='minimize', 
+        
+        try:
+            study = optuna.create_study(direction='minimize', 
                                         sampler = optuna.samplers.TPESampler(seed=SEED))
-        study.optimize(fn, n_trials = MAX_EVALS)
+            study.optimize(fn, n_trials = MAX_EVALS)
+        except:
+            pass
         self.params = study.best_params
         self.params['n_estimators'] = self.estimator
         return study
@@ -213,30 +265,33 @@ class Ctbclass():
           list_task_type = ['GPU']
           list_leaf_estimation_backtracking = ['Armijo', 'No', 'AnyImprovement']
           list_grow_policy = ['SymmetricTree', 'Depthwise', 'Lossguide']
+        
         params={
-        'l2_leaf_reg': trial.suggest_int('l2_leaf_reg', 0, 2, 1),
-        'learning_rate': trial.suggest_uniform('learning_rate', 1e-3, 5e-1),
+        'l2_leaf_reg': trial.suggest_loguniform('l2_leaf_reg', math.exp(1), math.exp(10)),
+        'learning_rate': trial.suggest_categorical('learning_rate', [0.30]),
         'depth': trial.suggest_int('depth', 1, CB_MAX_DEPTH, 1),
         'loss_function': trial.suggest_categorical('loss_function', 
-                                                   ['Logloss', 'CrossEntropy']),
+                                                   ['Logloss']),
         'border_count': trial.suggest_int('border_count', 32, 255, 1),
         'bootstrap_type': trial.suggest_categorical('bootstrap_type',
                                                     ['Bayesian', 'Bernoulli']), 
         'grow_policy': trial.suggest_categorical('grow_policy', list_grow_policy),
         'score_function': trial.suggest_categorical('score_function', list_score_function),
-        'eval_metric': trial.suggest_categorical('eval_metric', ['AUC']),
+        'eval_metric': trial.suggest_categorical('eval_metric', ['F1']),
         'min_data_in_leaf': trial.suggest_int('min_data_in_leaf', 1, 50, 1),
         'od_type': trial.suggest_categorical('od_type', ['IncToDec', 'Iter']),
         'task_type': trial.suggest_categorical('task_type',list_task_type),
         'leaf_estimation_backtracking': trial.suggest_categorical('leaf_estimation_backtracking', 
-                                                                  list_leaf_estimation_backtracking)
+                                                                  list_leaf_estimation_backtracking),
+        'scale_pos_weight' : trial.suggest_categorical('scale_pos_weight', [self.SCALE_POS_WEIGHT]),
+        'thread_count' : trial.suggest_categorical('thread_count',[8])
         }
 
         optim_type = 'Optuna'
         self.iteration += 1
         if self.GPU == False:
-            params['random_strength'] = trial.suggest_uniform('random_strength', 
-                                                            np.log(0.005), np.log(5))
+            params['random_strength'] = trial.suggest_int('random_strength',1,20,1) 
+                                                            
             params['rsm'] = trial.suggest_uniform('rsm', 0.1, 1)
         if params['grow_policy'] == 'Lossguide':
             params['max_leaves'] = trial.suggest_int('max_leaves', 2, 32)  
@@ -246,7 +301,7 @@ class Ctbclass():
             list_score_function = ['L2', 'NewtonL2','SolarL2', 'LOOL2' ]
         if params['bootstrap_type'] == 'Bayesian':
             params['bagging_temperature'] = trial.suggest_uniform('bagging_temperature',
-                                                                np.log(1), np.log(50))
+                                                                0,1)
         loss, params, _, _ = self.ctb_crossval(params, optim_type)
         return loss
 
@@ -259,13 +314,15 @@ class Ctbclass():
                                                'time'], index=list(range(MAX_EVALS)))
         if self.GPU == False:
             space.update({'rsm' : list(np.linspace(0.1, 1.0)),
-                          'random_strength': list(np.logspace(np.log(0.005), np.log(5), base=np.exp(1), num=1000))}) 
+                          'random_strength': list(range(1,10,1))})
         if self.GPU == True:
             space.update({'leaf_estimation_backtracking' : ['Armijo', 'No', 'AnyImprovement'],'thread_count' :[2]})
         if (self.lossguide_verifier == True) and (self.GPU == True):
              space.update({'score_function': ['L2', 'SolarL2', 'LOOL2', 'NewtonL2']})
         if (self.lossguide_verifier == False) and (self.GPU == True):
              space.update({'score_function': ['Cosine', 'L2', 'SolarL2', 'LOOL2', 'NewtonL2']})
+        
+        space.update({'scale_pos_weight' : [self.SCALE_POS_WEIGHT]})
 
         # Iterate through the specified number of evaluations
         for i in range(MAX_EVALS):
@@ -287,12 +344,13 @@ class Ctbclass():
         of results to be saved."""
         optim_type = 'Random'
         self.iteration += 1
-        random.seed(SEED) ##For True Randomized Search deactivate the fixated SEED
+        #random.seed(SEED) ##For True Randomized Search deactivate the fixated SEED
         if self.GPU == True:
             params['task_type'] = 'GPU'
         if self.GPU == False:
             params['task_type'] = 'CPU'
-            bagging_temperature_dist = list(np.logspace(np.log(1), np.log(50), base=np.exp(1), num=1000))
+        
+        bagging_temperature_dist = list(np.linspace(0,1))
         if params['bootstrap_type'] == 'Bayesian':
             params['bagging_temperature'] = random.sample(bagging_temperature_dist,1)[0]
         max_leaves_dist = list(range( 2, 32, 1))
@@ -314,6 +372,8 @@ class Ctbclass():
         ----------
         x_test: test set; y_test: test label"""
         self.cat = cb.train(params=self.params, pool=self.train_set)
+        self.train_predictions = self.cat.predict(self.X_train,prediction_type="Probability")
+        self.train_predictions = self.train_predictions [:,1]
         self.predictions = self.cat.predict(X_test,prediction_type="Probability")
         self.predictions = self.predictions [:,1]
         self.y_test = y_test
@@ -420,4 +480,3 @@ class Ctbclass():
         plt.title('FPR-FNR curves', fontsize=20)
         plt.legend(loc="lower left", fontsize=16)
         plt.savefig('fpr-fnr.png')
-
