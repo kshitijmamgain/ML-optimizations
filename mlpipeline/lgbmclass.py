@@ -354,8 +354,7 @@ class Lgbmclass():
         for parameter_name in ['num_leaves', 'subsample_for_bin', 'min_data_in_leaf',
                                'max_bin', 'bagging_freq']:
             best[parameter_name] = int(best[parameter_name])
-        self.gbm = lgb.train(best, self.train_set,
-                             feature_name=['f' + str(i + 1) for i in range(self.x_train.shape[-1])])
+        self.gbm = lgb.train(best, self.train_set)
         self.pred = self.gbm.predict(x_test)
         print("Model will be trained with best parameters obtained from {} ... \n\n\n".format(optim_type))
         print("Model trained on the following parameters: \n{}".format(best))
@@ -363,3 +362,4 @@ class Lgbmclass():
         ax = lgb.plot_importance(self.gbm, max_num_features=10)
         plt.savefig(os.path.join("figs",'lgb_'+optim_type+'feature_importance.png'))
         return self.pred
+
