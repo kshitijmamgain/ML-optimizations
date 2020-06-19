@@ -14,6 +14,8 @@ In this project, dataset is analyzed in several steps:
 5. Comparing of different fitted models and optimization methods against each other and AutoML of GCP.
 6. Comparing the results with previous papers.
 
+![mainfile+ETL](https://user-images.githubusercontent.com/56703496/85181382-c8da4980-b253-11ea-8bb4-2e30da00cb7b.png)
+
 # Data Source:
 The data used are available in public domain: 
 1. Higgs dataset has been produced using Monte Carlo simulations at Physics & Astronomy, Univ. of California Irvine. The dataset can be found at (http://archive.ics.uci.edu/ml/datasets/HIGGS).
