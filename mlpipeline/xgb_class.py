@@ -23,6 +23,8 @@ def f1_eval(pred, dmatrix):
     f1 = f1_score(y, np.round(pred))
     return 'F1', 1-f1
 
+RESULT_PATH = 'xgb.csv'
+
 class XGBoostModel():
 
     """
@@ -31,7 +33,8 @@ class XGBoostModel():
     optimize the hyperparameters using three different methods: HyperOpt,
     Optuna and RandomSearch
     """
-
+    iteration = 0
+    
     def __init__(self, x_train, y_train, max_evals, n_fold, num_boost_rounds,
                  early_stopping_rounds, seed, GPU):
 
@@ -76,6 +79,8 @@ class XGBoostModel():
       self.nfold = n_fold
       self.num_boost_rounds = num_boost_rounds
       self.early_stopping_rounds = early_stopping_rounds
+      self.seed = seed
+      self.GPU = GPU
       self.X_train, self.y_train = x_train, y_train
       self.dtrain = xgb.DMatrix(self.X_train, label=self.y_train)
       label = self.dtrain.get_label()
@@ -83,11 +88,14 @@ class XGBoostModel():
       self.dtest = None
       self.best_params = None
       self.best_model = None
-      self.output = None
-      self.seed = seed
-      self.GPU = GPU
+      self.optim_type = None
       self.trained = False
       self.tested = False
+      self.output = None
+      self.trials_file = RESULT_PATH
+      with open(self.trials_file, 'w', newline='') as output_file:
+        writer = csv.writer(output_file)
+        writer.writerow(['loss', 'variance', 'params', 'estimators', 'iteration', 'train_time','optim_type'])
       
     def cross_validation(self, space):
 
@@ -132,7 +140,12 @@ class XGBoostModel():
       cv_var = np.min(cv_results['test-F1-std'])**2
       n_estimators = int(np.argmin(cv_results['test-F1-mean']) + 1)
       results = {'loss': cv_score, 'variance': cv_var, 'params': space,
-                 'n_estimators': n_estimators, 'time': end - start}
+                 'n_estimators': n_estimators, 'iteration': self.iteration,
+                  'time': end - start, 'optim_type': self.optim_type}
+
+      output_file = open(self.trials_file, 'a')
+      writer = csv.writer(output_file)
+      writer.writerow([cv_score, cv_var, space, n_estimators, self.iteration, end-start, self.optim_type])
 
       return results
 
@@ -149,9 +162,7 @@ class XGBoostModel():
         value of the loss function using the HyperOpt optimization algorithm.
       """
       print('Starting HyperOpt hyperparameter tuning...')
-      self.trials = pd.DataFrame(columns=['params', 'loss',
-                                                   'variance', 'n_estimators',
-                                                   'time'])
+      self.trials = pd.DataFrame()
 
       def hyperopt_params():
 
@@ -177,11 +188,13 @@ class XGBoostModel():
 
         else:
           tree_method = [
-                        #  {'tree_method': 'hist',
-                        #   'grow_policy': hp.choice('grow_policy', ['lossguide', 'depthwise'])
-                        #  },
-                         {'tree_method': 'approx'}]
-          subsample = hp.quniform('subsample', 0.5, 1, 0.1)
+              {'tree_method': 'exact'},
+                         {'tree_method': 'hist',
+                          'grow_policy': hp.choice('grow_policy', ['lossguide', 'depthwise'])
+                         },
+                         {'tree_method': 'approx'}
+          ]
+          subsample = hp.uniform('subsample', 0.5, 1)
 
         params = {
                   'objective': 'binary:logistic',
@@ -191,18 +204,16 @@ class XGBoostModel():
                   'booster': 'gbtree',
                   'reg_lambda': hp.loguniform('reg_lambda', -3*np.log(10), 2*np.log(10)),
                   'reg_alpha': hp.loguniform('reg_alpha', -3*np.log(10), 2*np.log(10)),
-                  'max_depth': hp.choice('max_depth', np.arange(4, 12,
-                                                                dtype=int)),
+                  'max_depth': hp.quniform('max_depth', 4, 12, 1),
                   'gamma': hp.loguniform('gamma', -3*np.log(10), 2*np.log(10)),
                   'subsample': subsample,
                   'sampling_method': 'uniform',
-                  'colsample_bytree': hp.quniform('colsample_bytree',
-                                                  0.5, 1, 0.1),
-                  'colsample_bylevel': hp.quniform('colsample_bylevel',
-                                                   0.5, 1, 0.1),
-                  'colsample_bynode': hp.quniform('colsample_bynode',
-                                                  0.5, 1, 0.1),
-                  'nthread': 8,
+                  'colsample_bytree': hp.uniform('colsample_bytree',
+                                                  0.5, 1),
+                  'colsample_bylevel': hp.uniform('colsample_bylevel',
+                                                   0.5, 1),
+                  'colsample_bynode': hp.uniform('colsample_bynode',
+                                                  0.5, 1),
                   'tree_method': hp.choice('tree_method', tree_method),
                   'scale_pos_weight': self.ratio,
                   'predictor': 'cpu_predictor'
@@ -214,6 +225,8 @@ class XGBoostModel():
 
       def hyperopt_objective(space):
 
+        self.iteration+=1
+      
         """
         Defines the objective function to be optimized by the HyperOpt
         algorithm
@@ -236,11 +249,11 @@ class XGBoostModel():
         
         space['max_depth'] = int(space['max_depth'])
 
-        # if space['tree_method']['tree_method'] == 'hist':
-        #       grow_policy = space['tree_method'].get('grow_policy')
-        #       space['grow_policy'] = grow_policy
-        #       if space['grow_policy']=='lossguide':
-        #         space['max_leaves'] = 2**space['max_depth']-1
+        if space['tree_method']['tree_method'] == 'hist':
+              grow_policy = space['tree_method'].get('grow_policy')
+              space['grow_policy'] = grow_policy
+              if space['grow_policy']=='lossguide':
+                space['max_leaves'] = 2**space['max_depth']-1
 
         if space['tree_method']['tree_method'] == 'gpu_hist':
               single_precision_histogram = space['tree_method'].get(
@@ -259,21 +272,18 @@ class XGBoostModel():
 
         results = self.cross_validation(space)
         self.trials = self.trials.append(results, ignore_index=True)
-
-        current_time = (timer()-self.time)/3600
-        print('\n')
-        print('Time elapsed so far: '+ str(current_time) + ' hours')
-        print('\n')
-
+            
         result_dict = {'loss': results['loss'],
-                       'status': STATUS_OK,
-                       'parameters': results['params']}
-
+                       'parameters': results['params'],
+                       'iteration': self.iteration,
+                       'status': STATUS_OK,}
+        
         return (result_dict)
-
+      
+      
       trials = Trials()
       self.time = timer()
-
+    
       try:
         optimize = fmin(fn=hyperopt_objective,
                       space=space,
@@ -284,16 +294,13 @@ class XGBoostModel():
                        )
       except:
         pass
+    
       self.opt_time = (timer() - self.time)/3600
         
-      if not os.path.exists('XGBoost_trials'):
-        os.makedirs('XGBoost_trials')
-      self.trials.to_csv('XGBoost_trials/hyperopt_trials.csv')
-
       best = self.trials[['params', 'loss', 'n_estimators']].sort_values(
                                     by='loss', ascending=True).reset_index().loc[0].to_dict()
-        
-      self.estimators = best['n_estimators']  
+
+      self.estimators = int(best['n_estimators'])  
       best = best['params']
       self.best_params = best
       print('The best HyperOpt hyperparameters are: ')
