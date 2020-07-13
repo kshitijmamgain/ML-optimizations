@@ -47,8 +47,6 @@ PARAM_GRID = {
     'lambda_l1': list(np.linspace(0, 1)),
     'lambda_l2': list(np.linspace(0, 1)),
     'min_data_in_leaf' : list(range(20, 500, 10)),
-    'boosting_type': ['gbdt', 'goss'],
-    #'learning_rate' : list(np.logspace(np.log(0.05), np.log(0.2), base=np.exp(1), num=1000)),
     'feature_fraction': list(np.linspace(0.4, 1.0)),
     'verbosity' : [0],
     'objective' : [OBJECTIVE_LOSS]
@@ -257,7 +255,7 @@ class Lgbmclass():
         fn_name = 'optuna_obj'
         fn = getattr(self, fn_name)
         self.iteration = 0
-        study = optuna.create_study(study_name = 'lgb', direction='minimize', storage='sqlite:///lgb.db',
+        study = optuna.create_study(study_name = 'lgb', direction='minimize', storage='sqlite:///optuna_lgb.db',
                                     load_if_exists=True, sampler=optuna.samplers.TPESampler(seed=SEED))
         num_trials = len(study.trials)
         if num_trials < MAX_EVALS:
