@@ -1,5 +1,7 @@
+
 # csv files
 *.csv
+*.txt
 *.ipynb
 *.pyc
 __pycache__/
