@@ -3,11 +3,11 @@
 #from mlpipeline.catboost_class import Ctbclass
 #from mlpipeline.xgb_class import XGBoostModel
 from mlpipeline import lgbmclass
-from evaluations import Model_Evaluation
+from mlpipeline.evaluations import Model_Evaluation
 import pandas as pd
 import logging
 import configparser
-#import extensions.utilities as utilities
+import extensions.utilities as utilities
 import os
 import warnings
 from sklearn.exceptions import DataConversionWarning
@@ -16,35 +16,15 @@ import datetime
 import pickle as pkl
 from timeit import default_timer as timer
 import yaml
+import sys
 
 pd.options.mode.chained_assignment = None
 warnings.filterwarnings(action='ignore', category=DataConversionWarning) 
-
-
     
 def _get_args():
     """Get input arguments."""
     parser = argparse.ArgumentParser(
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-
-    parser.add_argument("--categorical_columns",
-                        default="data/categorical_features.yml",
-                        help="path to categorical data.",
-                        type=str)
-
-    parser.add_argument("--save_path",
-                        default="model",
-                        help="path to encoder and model.",
-                        type=str)
-    '''
-    parser.add_argument("--train_data_path",
-                        default=train_data_path,
-                        help="Path to train data",
-                        type=str)
-
-    parser.add_argument("--test_data_path",
-                        default=test_data_path,
-                        help="Path to test data")'''
 
     parser.add_argument("--config_path",
                         default="config.yml",
@@ -52,7 +32,7 @@ def _get_args():
                         type=str)
 
     parser.add_argument("--result_path",
-                        default="results/",
+                        default="results",
                         help="path to result path.",
                         type=str)
 
@@ -60,11 +40,6 @@ def _get_args():
                         default="log/"+'{:%Y%m%d-%H:%M:%S}'.format(datetime.datetime.now())+"-project.log",
                         help="path to log path.",
                         type=str)
-
-    parser.add_argument("--featureset_max_num",
-                        default="17",
-                        help="maximum number of created features.",
-                        type=int)
 
     parser.add_argument("--algorithm",
                         default="lgb",
@@ -86,22 +61,21 @@ def main():
 
     """
     args = _get_args()
-    categorical_f_path = args.categorical_columns
-    #train_data_path = args.train_data_path
-    #test_data_path = args.test_data_path
+
     config_path = args.config_path
-    result_path = args.result_path
-    save_path = args.save_path
+    result = args.result_path
     optimization = args.optimization
     algorithm = args.algorithm
-
-	# Read the configuration file
-    # config = json.load(open(config_path, 'r'))
-    with open('config.yml') as file:
+    
+    # load data file path
+    with open(config_path) as file:
         config = yaml.safe_load(file)
     train_data_path = config['path']['train_data']
     test_data_path = config['path']['test_data']
     target_label = config['target']['label']
+	# Read the configuration file
+    # config = json.load(open(config_path, 'r'))
+
     
     '''    #loading training and testing data into dataframes
     df_train = utilities.load_data(path=train_data_path, sample_rate=None)
@@ -155,11 +129,11 @@ def main():
     #### Apply the test set and get the model evaluation results
 
     roc_filename  = "roc_" + algorithm + "_" + optimization +".png"
-    roc_filename = os.path.join("figs", roc_filename)
+    roc_filename = os.path.join(result, roc_filename)
     pr_filename  = "pr_" + algorithm + "_" + optimization +".png"
-    pr_filename = os.path.join("figs", pr_filename)
+    pr_filename = os.path.join(result, pr_filename)
     fpr_fnr_filename = "fpr_fnr_" + "_" + algorithm + "_" + optimization +".png"
-    fpr_fnr_filename = os.path.join("figs", fpr_fnr_filename)
+    fpr_fnr_filename = os.path.join(result, fpr_fnr_filename)
 
     for predictions, actual, mode in [(train_predictions, y_train, 'train'), (test_predictions, y_test, 'test')]:
         me = Model_Evaluation() 
@@ -185,10 +159,11 @@ def main():
 if __name__ == "__main__":
     args = _get_args()
     log_filename = args.log_path
-    
     os.makedirs(os.path.dirname(log_filename), exist_ok=True)
+    #sys.stdout = open(log_filename, 'w')
+    result = args.result_path    
     try:
-        os.makedirs("figs")
+        os.makedirs(result)
     except OSError as exc:
         print('saving results in figs folder')
         

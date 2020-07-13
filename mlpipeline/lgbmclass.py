@@ -259,12 +259,9 @@ class Lgbmclass():
         self.iteration = 0
         study = optuna.create_study(study_name = 'lgb', direction='minimize', storage='sqlite:///lgb.db',
                                     load_if_exists=True, sampler=optuna.samplers.TPESampler(seed=SEED))
-        
-        step = STEP # save trial for after every 20 trials
-        for i in range(1, MAX_EVALS + 1, STEP):
-
-            study.optimize(fn, n_trials=i)
-            print('creating checkpoint')
+        num_trials = len(study.trials)
+        if num_trials < MAX_EVALS:
+            study.optimize(fn, n_trials=(MAX_EVALS-num_trials))
         
         self.params = study.best_params
         #self.params['n_estimators'] = self.estimator
@@ -273,18 +270,16 @@ class Lgbmclass():
     def optuna_obj(self, trial):
         '''Defining the parameters space inside the function for optuna optimization'''
         params = {
-            'num_leaves': trial.suggest_int('num_leaves', 16, 196, 4),
-            'max_bin' : trial.suggest_int('max_bin', 254, 255, 1),
-            'lambda_l1': trial.suggest_loguniform('lambda_l1', 1e-8, 10.0),
-            'lambda_l2': trial.suggest_loguniform("lambda_l2", 1e-8, 10.0),
-            'min_data_in_leaf' : trial.suggest_int('min_data_in_leaf', 20, 500),
+            'num_leaves': trial.suggest_int('num_leaves', 31, 1023, 16),
+            'lambda_l1': trial.suggest_uniform('lambda_l1', 0, 0.5),
+            'lambda_l2': trial.suggest_uniform("lambda_l2", 0, 0.5),
+            'min_gain_to_split': trial.suggest_uniform('min_gain_to_split', 0.0, 5),
             'boosting_type': trial.suggest_categorical('boosting_type', ['gbdt', 'goss']),
-            # removed 'dart'
-            'learning_rate' : 0.2,
-            'subsample_for_bin': trial.suggest_int('subsample_for_bin',20000, 300000, 20000),
+            'min_data_in_leaf' : trial.suggest_int('min_data_in_leaf', 20, 500, 10),
+            'min_child_weight': trial.suggest_uniform('min_child_weight', 0.1, 10),
+            'learning_rate' : 0.1,
             'feature_fraction': trial.suggest_uniform("feature_fraction", 0.4, 1.0),
-            'bagging_freq': trial.suggest_int("bagging_freq", 1, 7),
-            'verbosity' : 0,
+            'verbosity' : -1,
             'objective' : OBJECTIVE_LOSS
                 }
 
@@ -292,8 +287,7 @@ class Lgbmclass():
         self.iteration += 1
 
         # Make sure parameters that need to be integers are integers
-        for parameter_name in ['num_leaves', 'min_data_in_leaf',
-                               'max_bin', 'bagging_freq']:
+        for parameter_name in ['num_leaves', 'min_data_in_leaf']:
             params[parameter_name] = int(params[parameter_name])
 
         # Perform n_folds cross validation
@@ -381,5 +375,5 @@ class Lgbmclass():
         print("Model trained on the following parameters: \n{}".format(best))
         print('Plotting feature importances...')
         ax = lgb.plot_importance(self.gbm, max_num_features=10)
-        plt.savefig(os.path.join("figs",'lgb_'+optim_type+'feature_importance.png'))
+        plt.savefig(os.path.join('results','lgb_'+optim_type+'feature_importance.png'))
         return self.gbm
