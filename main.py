@@ -1,17 +1,18 @@
 # -*- coding: utf-8 -*-
 
-from mlpipeline.catboost_class import Ctbclass
-from mlpipeline.xgb_class import XGBoostModel
-from mlpipeline import lgbmclass as lgbc
-from mlpipeline.evaluations import Model_Evaluation
+#from mlpipeline.catboost_class import Ctbclass
+#from mlpipeline.xgb_class import XGBoostModel
+from mlpipeline import lgbmclass
+from evaluations import Model_Evaluation
 import pandas as pd
 import logging
 import configparser
-import extensions.utilities as utilities
+#import extensions.utilities as utilities
 import os
 import warnings
 from sklearn.exceptions import DataConversionWarning
 import argparse
+import datetime
 import pickle as pkl
 from timeit import default_timer as timer
 import yaml
@@ -56,7 +57,7 @@ def _get_args():
                         type=str)
 
     parser.add_argument("--log_path",
-                        default="log/higgs_project.log",
+                        default="log/"+'{:%Y%m%d-%H:%M:%S}'.format(datetime.datetime.now())+"-project.log",
                         help="path to log path.",
                         type=str)
 
@@ -102,7 +103,7 @@ def main():
     test_data_path = config['path']['test_data']
     target_label = config['target']['label']
     
-    #loading training and testing data into dataframes
+    '''    #loading training and testing data into dataframes
     df_train = utilities.load_data(path=train_data_path, sample_rate=None)
     logging.info('Train Dataframe of shape {} loaded'.format(df_train.shape))
     df_test = utilities.load_data(path=test_data_path, sample_rate=None)
@@ -110,8 +111,13 @@ def main():
 
     # create X and y
     X_train, y_train = utilities.create_xy(df=df_train, target=target_label)
-    X_test, y_test = utilities.create_xy(df=df_test, target=target_label)
-
+    X_test, y_test = utilities.create_xy(df=df_test, target=target_label)'''
+    train = pd.read_csv(train_data_path)
+    test = pd.read_csv(test_data_path)
+    X_train = train.drop(target_label, axis = 1)
+    y_train = train[target_label]
+    X_test = test.drop(target_label, axis =1)
+    y_test = test[target_label]
 
     # start with model training:
 
@@ -124,27 +130,30 @@ def main():
 
     elif algorithm == "xgb":
 
-        model = XGBoostModel(X_train, y_train, max_evals=1000, n_fold=5, 
-                        num_boost_rounds=10000, early_stopping_rounds=100,
+        model = XGBoostModel(X_train, y_train, max_evals=50, n_fold=5, 
+                        num_boost_rounds=100, early_stopping_rounds=10,
                         seed=42, GPU=False)
         model.train(optim_type=optimization)
-        train_predictions = model.train_predictions
         model.test(X_test, y_test)
-        test_predictions = model.predictions
+        predictions = model.predictions
 
     elif algorithm == 'lgb':
         
         start = timer()
-        model = lgbc.Lgbmclass(X_train, y_train)
+        model = lgbmclass.Lgbmclass(X_train, y_train)
         model.train(optimization, device='cpu')
         train_time = timer() - start
         logging.info('Train time {} with {} optimization: {} seconds'.format(algorithm, optimization, train_time))
         model.test(X_test, y_test)
-        predictions = model.pred
-        
+        test_predictions=model.test_prediction
+        print('test_prediction', test_predictions)
+        logging.info('Train time with best parameters for {} with {} optimization: {} seconds'.format(algorithm, optimization, model.best_time))
+        #predictions = model.pred
+        train_predictions=model.train_prediction
+        print('train_prediction', train_predictions)
 
-    ### Apply the test set and get the model evaluation results
-    
+    #### Apply the test set and get the model evaluation results
+
     roc_filename  = "roc_" + algorithm + "_" + optimization +".png"
     roc_filename = os.path.join("figs", roc_filename)
     pr_filename  = "pr_" + algorithm + "_" + optimization +".png"
@@ -159,7 +168,6 @@ def main():
                        pr_filename,
                        fpr_fnr_filename,
                        algorithm)
-
         if  not results:
             raise Exception("no results generated! please check!")
         else:  ### Print the results #### 

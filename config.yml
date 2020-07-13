@@ -1,6 +1,6 @@
 path:
-    'train_data': 'data/credit_card/train.csv'
-    'test_data' : 'data/credit_card/test.csv'
+    'train_data': '../data/train.csv'
+    'test_data' : '../data/test.csv'
 
 target:
     'label': 'Class'
