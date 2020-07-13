@@ -1,0 +1,16 @@
+constant:
+    'max_evals': 301
+    'n_folds': 5
+    'num_boost_rounds': 10000
+    'early_stopping_rounds': 100
+    'seed': 992
+    'checkpoint': 100
+
+hyperparameter:
+    'loss': 'binary'
+    'eval': 'logloss'
+    
+results:
+    'result': 'lgbm.csv'
+    'log': ''
+    'figure': ''

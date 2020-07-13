@@ -1,11 +1,14 @@
+
 # csv files
 *.csv
+*.txt
 *.ipynb
 *.pyc
 __pycache__/
 *.png
 *.ipynb_checkpoints
 log/
+lgb_optuna*
 lgb_hyperopt
 lgb_optuna
 lgb_random_search
