@@ -77,7 +77,7 @@ def main():
     # config = json.load(open(config_path, 'r'))
 
     
-    '''    #loading training and testing data into dataframes
+    #loading training and testing data into dataframes
     df_train = utilities.load_data(path=train_data_path, sample_rate=None)
     logging.info('Train Dataframe of shape {} loaded'.format(df_train.shape))
     df_test = utilities.load_data(path=test_data_path, sample_rate=None)
@@ -85,13 +85,8 @@ def main():
 
     # create X and y
     X_train, y_train = utilities.create_xy(df=df_train, target=target_label)
-    X_test, y_test = utilities.create_xy(df=df_test, target=target_label)'''
-    train = pd.read_csv(train_data_path)
-    test = pd.read_csv(test_data_path)
-    X_train = train.drop(target_label, axis = 1)
-    y_train = train[target_label]
-    X_test = test.drop(target_label, axis =1)
-    y_test = test[target_label]
+    X_test, y_test = utilities.create_xy(df=df_test, target=target_label)
+
 
     # start with model training:
 
