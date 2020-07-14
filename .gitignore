@@ -9,6 +9,7 @@ __pycache__/
 *.ipynb_checkpoints
 log/
 lgb_optuna*
-lgb_hyperopt
+optuna_lgb
+lgb_hyperopt*
 lgb_optuna
 lgb_random_search
