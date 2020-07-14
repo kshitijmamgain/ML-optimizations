@@ -66,12 +66,12 @@ def main():
     result = args.result_path
     optimization = args.optimization
     algorithm = args.algorithm
-    
+    home = os.getcwd()
     # load data file path
     with open(config_path) as file:
         config = yaml.safe_load(file)
-    train_data_path = config['path']['train_data']
-    test_data_path = config['path']['test_data']
+    train_data_path = home+config['path']['train_data']
+    test_data_path = home+config['path']['test_data']
     target_label = config['target']['label']
 	# Read the configuration file
     # config = json.load(open(config_path, 'r'))

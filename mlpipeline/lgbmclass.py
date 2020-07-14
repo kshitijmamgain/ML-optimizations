@@ -194,21 +194,17 @@ class Lgbmclass():
             trials = Trials()
         self.iteration = 0
         # create checkpoints
-        step = 10 # save trial for after every 20 trials
-        for i in range(1, MAX_EVALS + 1, STEP):
-            # fmin runs until the trials object has max_evals elements in it, so it can do evaluations in chunks like this
-            # each step 'best' will be the best trial so far
-            # each step 'trials' will be updated to contain every result
-            # you can save it to reload later in case of a crash, or you decide to kill the script
-            try:
-                trials = pickle.load(open("lgb_hyperopt.p","rb"))
-                print('loading from saved pickle file... starting from {}'.format(len(trials.trials)))
-            except:
-                trials = Trials()
-                print('creating new trials')
-            result = fmin(fn=self.hyperopt_obj, space=params, algo=algo, max_evals=i,
-                          trials=trials, rstate=np.random.RandomState(SEED))
-            pickle.dump(trials, open("lgb_hyperopt.p","wb"))
+
+        try:
+            trials = pickle.load(open("lgb_hyperopt.p","rb"))
+            print('loading from saved pickle file... starting from {}'.format(len(trials.trials)))
+        except:
+            trials = Trials()
+            print('creating new trials')
+        num_trials = len(trials.trials)
+        result = fmin(fn=self.hyperopt_obj, space=params, algo=algo, max_evals=(MAX_EVALS-num_trials),
+                      trials=trials, rstate=np.random.RandomState(SEED))
+        pickle.dump(trials, open("lgb_hyperopt.p","wb"))
         self.params = trials.best_trial['result']['params']
         #self.params['n_estimators'] = self.estimator
         return result, trials
@@ -255,7 +251,7 @@ class Lgbmclass():
         fn_name = 'optuna_obj'
         fn = getattr(self, fn_name)
         self.iteration = 0
-        study = optuna.create_study(study_name = 'lgb', direction='minimize', storage='sqlite:///optuna_lgb.db',
+        study = optuna.create_study(study_name = 'lgb', direction='minimize', storage='sqlite:///lgb_optuna.db',
                                     load_if_exists=True, sampler=optuna.samplers.TPESampler(seed=SEED))
         num_trials = len(study.trials)
         if num_trials < MAX_EVALS:
