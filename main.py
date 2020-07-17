@@ -66,12 +66,12 @@ def main():
     result = args.result_path
     optimization = args.optimization
     algorithm = args.algorithm
-    home = os.getcwd()
+    
     # load data file path
     with open(config_path) as file:
         config = yaml.safe_load(file)
-    train_data_path = home+config['path']['train_data']
-    test_data_path = home+config['path']['test_data']
+    train_data_path = config['path']['train_data']
+    test_data_path = config['path']['test_data']
     target_label = config['target']['label']
 	# Read the configuration file
     # config = json.load(open(config_path, 'r'))
@@ -86,7 +86,6 @@ def main():
     # create X and y
     X_train, y_train = utilities.create_xy(df=df_train, target=target_label)
     X_test, y_test = utilities.create_xy(df=df_test, target=target_label)
-
 
     # start with model training:
 
@@ -115,11 +114,8 @@ def main():
         logging.info('Train time {} with {} optimization: {} seconds'.format(algorithm, optimization, train_time))
         model.test(X_test, y_test)
         test_predictions=model.test_prediction
-        print('test_prediction', test_predictions)
         logging.info('Train time with best parameters for {} with {} optimization: {} seconds'.format(algorithm, optimization, model.best_time))
-        #predictions = model.pred
         train_predictions=model.train_prediction
-        print('train_prediction', train_predictions)
 
     #### Apply the test set and get the model evaluation results
 
