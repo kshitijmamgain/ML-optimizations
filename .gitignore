@@ -1,11 +1,18 @@
 
 # csv files
 *.csv
+# text files
 *.txt
-*.ipynb
+#cachefile
 *.pyc
 __pycache__/
+.vscode/
+#experiment images
 *.png
 *.ipynb_checkpoints
-log/
+
+#log files
+log/*
+#pickle files
 lgb_*
+
