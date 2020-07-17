@@ -8,8 +8,4 @@ __pycache__/
 *.png
 *.ipynb_checkpoints
 log/
-lgb_optuna*
-optuna_lgb
-lgb_hyperopt*
-lgb_optuna
-lgb_random_search
+lgb_*
