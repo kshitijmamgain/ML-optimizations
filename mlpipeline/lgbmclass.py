@@ -1,7 +1,10 @@
+# coding: utf-8
+''' This class tunes hyperparamter for LightGBM ML algorithm for Higgs dataset'''
+
 # Draft Codes
 # coding: utf-8
 ''' This class tunes hyperparamter for LightGBM ML algorithm for Higgs dataset'''
-import ast
+import ast 
 import csv
 import os
 from timeit import default_timer as timer
@@ -39,27 +42,35 @@ def f1_eval(pred, data):
 
 # random search
 PARAM_GRID = {
-    'num_leaves': list(range(16, 196, 4)),
-    'lambda_l1': list(np.linspace(0, 1)),
-    'lambda_l2': list(np.linspace(0, 1)),
-    'boosting_type': ['gbdt', 'goss'],
-    'feature_fraction': list(np.linspace(0.4, 1.0)),
-    'verbosity' : [0],
+    'num_leaves' : list(range(31, 1023, 16)),
+    'lambda_l1' : list(np.linspace(0, 0.5)),
+    'lambda_l2' : list(np.linspace(0, 0.5)),
+    'min_gain_to_split' : list(np.linspace(0, 5)),
+    'boosting_type' : ['gbdt', 'goss'],
+    'min_data_in_leaf' : list(range(20, 500, 10)),
+    'min_child_weight' : list(np.linspace(0.1,10)),
+    'learning_rate' : [0.3],
+    'feature_fraction' : list(np.linspace(0.4, 1.0)),
+    'verbosity' : [-1],
     'objective' : [OBJECTIVE_LOSS]
     }
+
 
 # Hyperopt Space
 H_SPACE = {
     'num_leaves': hp.quniform('num_leaves', 31, 1023, 16),
     'lambda_l1': hp.uniform('lambda_l1', 0.0, 0.5),
     'lambda_l2': hp.uniform("lambda_l2", 0.0, 0.5),
+    'min_gain_to_split': hp.uniform("min_gain_to_split", 0.0, 5),
     'boosting_type': hp.choice('boosting_type',
                                [{'boosting_type': 'gbdt',
                                  'subsample': hp.uniform('gdbt_subsample', 0.5, 1)},
                                 {'boosting_type': 'goss', 'subsample': 1.0}]),
-    'learning_rate' : 0.2,
+    'min_data_in_leaf' : hp.quniform('min_data_in_leaf', 20, 500, 10),
+    'min_child_weight': hp.uniform('min_child_weight', 0.1, 10),
+    'learning_rate' : 0.3,
     'feature_fraction': hp.uniform('feature_fraction', 0.4, 1.0),
-    'verbosity' : 0,
+    'verbosity' : -1,
     'objective' : OBJECTIVE_LOSS
     }
 
@@ -89,7 +100,6 @@ class Lgbmclass():
                 # Write the headers to the file
                 writer.writerow(['loss', 'params', 'iteration', 'estimators', 'train_time','optim_type'])
                 print('creating lgbm csv file to print result...')
-
         self.x_train = x_train
         self.y_train = y_train
         self.train_set = lgb.Dataset(data=x_train, label=y_train, free_raw_data=True)
@@ -131,10 +141,13 @@ class Lgbmclass():
         ------
         Loss, params, n_estimators, run_time'''
         # initializing the timer
-         
-        start = timer()
+        
         params['device'] = self.device
+        with open('params.txt','w') as file:
+                file.write('trying parameter : \n\t' + str(params))
         #params['is_unbalance'] = True
+ 
+        start = timer()
         if optim_type == 'optuna':
             cv_results = lgbo.cv(params, self.train_set, num_boost_round=NUM_BOOST_ROUNDS,
                                  nfold=N_FOLDS, early_stopping_rounds=EARLY_STOPPING_ROUNDS,
@@ -215,11 +228,11 @@ class Lgbmclass():
         # Extract the boosting type
         params['boosting_type'] = params['boosting_type']['boosting_type']
         params['subsample'] = subsample
-        params['learning_rate'] = 0.2
+        params['learning_rate'] = 0.3
         params['scale_pos_weight'] = self.ratio
 
         # Make sure parameters that need to be integers are integers
-        for parameter_name in ['num_leaves']:
+        for parameter_name in ['num_leaves', 'min_data_in_leaf']:
             params[parameter_name] = int(params[parameter_name])
 
         # Perform n_folds cross validation
@@ -247,12 +260,9 @@ class Lgbmclass():
         self.iteration = 0
         study = optuna.create_study(study_name = 'lgb', direction='minimize', storage='sqlite:///lgb.db',
                                     load_if_exists=True, sampler=optuna.samplers.TPESampler(seed=SEED))
-        
-        step = STEP # save trial for after every 20 trials
-        for i in range(1, MAX_EVALS + 1, STEP):
-
-            study.optimize(fn, n_trials=i)
-            print('creating checkpoint')
+        num_trials = len(study.trials)
+        if num_trials < MAX_EVALS:
+            study.optimize(fn, n_trials=(MAX_EVALS-num_trials))
         
         self.params = study.best_params
         #self.params['n_estimators'] = self.estimator
@@ -261,13 +271,16 @@ class Lgbmclass():
     def optuna_obj(self, trial):
         '''Defining the parameters space inside the function for optuna optimization'''
         params = {
-            'num_leaves': trial.suggest_int('num_leaves', 16, 196, 4),
-            'lambda_l1': trial.suggest_loguniform('lambda_l1', 1e-8, 10.0),
-            'lambda_l2': trial.suggest_loguniform("lambda_l2", 1e-8, 10.0),
+            'num_leaves': trial.suggest_int('num_leaves', 31, 1023, 16),
+            'lambda_l1': trial.suggest_uniform('lambda_l1', 0, 0.5),
+            'lambda_l2': trial.suggest_uniform("lambda_l2", 0, 0.5),
+            'min_gain_to_split': trial.suggest_uniform('min_gain_to_split', 0.0, 5),
             'boosting_type': trial.suggest_categorical('boosting_type', ['gbdt', 'goss']),
-            'learning_rate' : 0.2,
+            'min_data_in_leaf' : trial.suggest_int('min_data_in_leaf', 20, 500, 10),
+            'min_child_weight': trial.suggest_uniform('min_child_weight', 0.1, 10),
+            'learning_rate' : 0.1,
             'feature_fraction': trial.suggest_uniform("feature_fraction", 0.4, 1.0),
-            'verbosity' : 0,
+            'verbosity' : -1,
             'objective' : OBJECTIVE_LOSS
                 }
 
@@ -275,7 +288,7 @@ class Lgbmclass():
         self.iteration += 1
 
         # Make sure parameters that need to be integers are integers
-        for parameter_name in ['num_leaves']:
+        for parameter_name in ['num_leaves', 'min_data_in_leaf']:
             params[parameter_name] = int(params[parameter_name])
 
         # Perform n_folds cross validation
@@ -293,22 +306,31 @@ class Lgbmclass():
         print('Running {} rounds of LGBM parameter optimisation using Random Search:'.format(MAX_EVALS))
         # Dataframe to hold cv results
         space = PARAM_GRID
-        random_results = pd.DataFrame(columns=['loss', 'params', 'iteration', 'estimators',
-                                               'time'], index=list(range(MAX_EVALS)))
-
+        self.iteration = 0
+        
+        try:
+            print('loading previous saved trials')
+            random_results =  pd.read_csv(self.out_file).drop('optim_type', axis=1)
+            random_results['params'] = random_results.params.apply(lambda x: ast.literal_eval(x))
+        except:
+            print('creating new trials')
+            random_results = pd.DataFrame(columns=['loss', 'params', 'iteration', 'estimators',
+                                                   'time'], index=list(range(MAX_EVALS)))
+        num_trials = len(random_results)
         # Iterate through the specified number of evaluations
-        for i in range(MAX_EVALS):
+        
+        for i in range(num_trials, MAX_EVALS):
 
             # Randomly sample parameters for gbm
             params = {key: random.sample(value, 1)[0] for key, value in space.items()}
             results_list = self.randomsrch_obj(params, i)
-
             # Add results to next row in dataframe
             random_results.loc[i, :] = results_list
+        
         #sort values by the loss
         random_results.sort_values('loss', ascending = True, inplace = True)
-        self.params = random_results.loc[0, 'params']
-        self.params['n_estimators'] = self.estimator
+        self.params = random_results.loc[0, 'params']    
+        self.params['n_estimators'] = random_results.loc[0,'estimators']
         return random_results
 
     def randomsrch_obj(self, params, iteration):
@@ -329,7 +351,7 @@ class Lgbmclass():
 
         # Perform n_folds cross validation
         loss, params, n_estimators, run_time = self.lgb_crossval(params, optim_type)
-
+        
         # Return list of results
         return [loss, params, iteration, n_estimators, run_time]
 
@@ -346,20 +368,24 @@ class Lgbmclass():
         self.test_x, self.test_y = x_test, y_test
         param_df = pd.read_csv(RESULT_PATH)
         param_df.sort_values('loss', ascending = True, inplace = True)
-
+        param_df.reset_index(inplace = True)
+        param_df.drop('index', axis =1, inplace = True)
         best = ast.literal_eval(param_df.loc[0, 'params'])
         best['n_estimators'] = int(param_df.loc[0, 'estimators'])
         best['learning_rate'] = 0.05
         optim_type = param_df.loc[0, 'optim_type']
-        for parameter_name in ['num_leaves', 'subsample_for_bin', 'min_data_in_leaf',
-                               'max_bin', 'bagging_freq']:
+        for parameter_name in ['num_leaves']:
             best[parameter_name] = int(best[parameter_name])
+        start = timer()        
         self.gbm = lgb.train(best, self.train_set)
-        self.pred = self.gbm.predict(x_test)
+        self.best_time = timer() - start
+        self.test_prediction = self.gbm.predict(x_test)
+        self.train_prediction = self.gbm.predict(self.x_train)
         print("Model will be trained with best parameters obtained from {} ... \n\n\n".format(optim_type))
         print("Model trained on the following parameters: \n{}".format(best))
         print('Plotting feature importances...')
         ax = lgb.plot_importance(self.gbm, max_num_features=10)
-        plt.savefig(os.path.join("figs",'lgb_'+optim_type+'feature_importance.png'))
-        return self.pred
+        plt.savefig(os.path.join('results','lgb_'+optim_type+'feature_importance.png'))
+        pickle.dump(self.test_prediction, open("lgb_predict_proba.p","wb"))
+        return self.gbm
 

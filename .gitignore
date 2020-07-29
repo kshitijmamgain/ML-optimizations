@@ -1,13 +1,22 @@
+
 # csv files
 *.csv
-*.ipynb
+# text files
+*.txt
+#cachefile
 *.pyc
 __pycache__/
+.vscode/
+#experiment images
 *.png
 *.ipynb_checkpoints
-log/
-lgb_hyperopt
-lgb_optuna
-lgb_random_search
+
 .DS_Store
 .vscode/
+
+
+#log files
+log/*
+#pickle files
+lgb_*
+

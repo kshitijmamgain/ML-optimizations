@@ -177,9 +177,9 @@ class XGBoostModel():
 
         else:
           tree_method = [
-                        #  {'tree_method': 'hist',
-                        #   'grow_policy': hp.choice('grow_policy', ['lossguide', 'depthwise'])
-                        #  },
+                         {'tree_method': 'hist',
+                          'grow_policy': hp.choice('grow_policy', ['lossguide', 'depthwise'])
+                         },
                          {'tree_method': 'approx'}]
           subsample = hp.quniform('subsample', 0.5, 1, 0.1)
 
@@ -202,7 +202,7 @@ class XGBoostModel():
                                                    0.5, 1, 0.1),
                   'colsample_bynode': hp.quniform('colsample_bynode',
                                                   0.5, 1, 0.1),
-                  'nthread': 8,
+                  'nthread': 4,
                   'tree_method': hp.choice('tree_method', tree_method),
                   'scale_pos_weight': self.ratio,
                   'predictor': 'cpu_predictor'
@@ -236,11 +236,11 @@ class XGBoostModel():
         
         space['max_depth'] = int(space['max_depth'])
 
-        # if space['tree_method']['tree_method'] == 'hist':
-        #       grow_policy = space['tree_method'].get('grow_policy')
-        #       space['grow_policy'] = grow_policy
-        #       if space['grow_policy']=='lossguide':
-        #         space['max_leaves'] = 2**space['max_depth']-1
+        if space['tree_method']['tree_method'] == 'hist':
+              grow_policy = space['tree_method'].get('grow_policy')
+              space['grow_policy'] = grow_policy
+              if space['grow_policy']=='lossguide':
+                space['max_leaves'] = 2**space['max_depth']-1
 
         if space['tree_method']['tree_method'] == 'gpu_hist':
               single_precision_histogram = space['tree_method'].get(
@@ -259,21 +259,22 @@ class XGBoostModel():
 
         results = self.cross_validation(space)
         self.trials = self.trials.append(results, ignore_index=True)
-
+        
         current_time = (timer()-self.time)/3600
         print('\n')
         print('Time elapsed so far: '+ str(current_time) + ' hours')
         print('\n')
-
+            
         result_dict = {'loss': results['loss'],
                        'status': STATUS_OK,
                        'parameters': results['params']}
-
+        
         return (result_dict)
-
+      
+      
       trials = Trials()
       self.time = timer()
-
+    
       try:
         optimize = fmin(fn=hyperopt_objective,
                       space=space,
@@ -343,9 +344,7 @@ class XGBoostModel():
           subsample = trial.suggest_uniform('subsample', 0.1, 1)
         
         else:
-          tree_method_list = ['approx'
-          # , 'hist'
-          ]
+          tree_method_list = ['auto', 'exact', 'approx', 'hist']
           sampling_method = ['uniform']
           predictor = ['cpu_predictor']
           subsample = trial.suggest_uniform('subsample', 0.5, 1)
@@ -355,26 +354,24 @@ class XGBoostModel():
             'eval_metric': 'logloss',
             'verbosity': 1,
             'disable_default_eval_metric': 1,
-            'booster': 'gbtree',
-            #'booster': trial.suggest_categorical('booster',['gbtree']),
-            'reg_lambda': trial.suggest_loguniform('reg_lambda', 1e-3, 1e2),
-            'reg_alpha': trial.suggest_loguniform('reg_alpha', 1e-3, 1e2),
-            #'max_delta_step': trial.suggest_int('max_delta_step', 1, 10),
-            'max_depth': trial.suggest_int('max_depth', 4, 12),
-            #'eta': trial.suggest_uniform('eta', 0.025, 0.5),
-            'gamma': trial.suggest_loguniform('gamma', 1e-3, 1e2),
+            'booster': trial.suggest_categorical('booster',['gbtree', 'dart']),
+            'reg_lambda': trial.suggest_int('reg_lambda', 1, 2),
+            'reg_alpha': trial.suggest_int('reg_alpha', 0, 10),
+            'max_delta_step': trial.suggest_int('max_delta_step', 1, 10),
+            'max_depth': trial.suggest_int('max_depth', 1, 14),
+            'eta': trial.suggest_uniform('eta', 0.025, 0.5),
+            'gamma': trial.suggest_uniform('gamma', 0.5, 1.0),
             'subsample': subsample,
-            #'grow_policy': trial.suggest_categorical('grow_policy',
-             #                                      ['depthwise', 'lossguide']),
-            #'min_child_weight': trial.suggest_uniform('min_child_weight',
-             #                                         1, 10),
+            'grow_policy': trial.suggest_categorical('grow_policy',
+                                                   ['depthwise', 'lossguide']),
+            'min_child_weight': trial.suggest_uniform('min_child_weight',
+                                                      1, 10),
             'colsample_bytree': trial.suggest_uniform('colsample_bytree',
-                                                      0.5, 1),
+                                                      0.1, 1),
             'colsample_bylevel': trial.suggest_uniform('colsample_bylevel',
-                                                       0.5, 1),
+                                                       0.1, 1),
             'colsample_bynode': trial.suggest_uniform('colsample_bynode',
-                                                      0.5, 1),
-            'nthread': 8,
+                                                      0.1, 1),
             'tree_method': trial.suggest_categorical('tree_method',
                                                      tree_method_list),
             'scale_pos_weight': self.ratio,
@@ -384,23 +381,23 @@ class XGBoostModel():
                                                      predictor)
                   }
 
-        # if space['grow_policy'] == 'lossguide':
-        #     space['max_leaves'] = trial.suggest_int('max_leaves', 0, 10)
+        if space['grow_policy'] == 'lossguide':
+            space['max_leaves'] = trial.suggest_int('max_leaves', 0, 10)
 
-        # if space['booster'] == 'dart':
-        #     space['sample_type'] = trial.suggest_categorical(
-        #                                 'sample_type', ['uniform', 'weighted'])
-        #     space['normalize_type'] = trial.suggest_categorical(
-        #                                   'normalize_type', ['tree', 'forest'])
-        #     space['rate_drop'] = trial.suggest_uniform('rate_drop', 0, 1)
-        #     space['skip_drop'] = trial.suggest_uniform('skip_drop', 0, 1)
+        if space['booster'] == 'dart':
+            space['sample_type'] = trial.suggest_categorical(
+                                        'sample_type', ['uniform', 'weighted'])
+            space['normalize_type'] = trial.suggest_categorical(
+                                          'normalize_type', ['tree', 'forest'])
+            space['rate_drop'] = trial.suggest_uniform('rate_drop', 0, 1)
+            space['skip_drop'] = trial.suggest_uniform('skip_drop', 0, 1)
 
-        # if space['tree_method'] == 'hist':
-        #     space['max_bin'] = trial.suggest_categorical('max_bin',
-        #                                              [2**7, 2**8, 2**9, 2**10])
+        if space['tree_method'] == 'hist':
+            space['max_bin'] = trial.suggest_categorical('max_bin',
+                                                     [2**7, 2**8, 2**9, 2**10])
 
-        # if space['tree_method'] == 'approx':
-        #     space['sketch_eps'] = trial.suggest_uniform('sketch_eps', 0.01, 0.99)
+        if space['tree_method'] == 'approx':
+            space['sketch_eps'] = trial.suggest_uniform('sketch_eps', 0.01, 0.99)
 
         if space['tree_method'] == 'gpu_hist':
             space['single_precision_histogram'] = trial.suggest_categorical(
@@ -410,30 +407,17 @@ class XGBoostModel():
             space['max_bin'] = trial.suggest_categorical('max_bin',
                                                      [2**7, 2**8, 2**9, 2**10])
 
-        print('Training with params: ')
-        print(space)
-
         results = self.cross_validation(space)
-        self.trials = self.trials.append(results, ignore_index=True)
 
-        current_time = (timer()-self.time)/3600
-        print('\n')
-        print('Time elapsed so far: '+ str(current_time) + ' hours')
-        print('\n')
+        self.trials = self.trials.append(results, ignore_index=True)
 
         return results['loss']
 
-      self.time = timer()
-
-      try:
-        study = optuna.create_study(direction='minimize'
+      study = optuna.create_study(direction='minimize'
 #                                   sampler=optuna.samplers.TPESampler(
 #                                       seed=self.seed)
                                  )
-        optimize = study.optimize(optuna_objective, n_trials=self.max_evals)
-      except:
-        pass
-      self.opt_time = (timer() - self.time)/3600
+      optimize = study.optimize(optuna_objective, n_trials=self.max_evals)
 
       if not os.path.exists('XGBoost_trials'):
         os.makedirs('XGBoost_trials')
@@ -485,30 +469,27 @@ class XGBoostModel():
         if self.GPU:
           tree_method_list = ['gpu_hist']
         else:
-          tree_method_list = ['approx'
-                              #, 'hist'
-                              ]
+          tree_method_list = ['auto', 'exact', 'approx', 'hist']
 
         params = {
             'objective': ['binary:logistic'],
             'eval_metric': ['logloss'],
             'disable_default_eval_metric': [1],
-            'booster': ['gbtree'],
-            'reg_lambda': np.arange(1e-3, 1e2),
-            'reg_alpha': np.arange(1e-3, 1e2),
+            'booster': ['gbtree', 'dart'],
+            'reg_lambda': np.arange(1, 2, 0.1),
+            'reg_alpha': np.arange(0, 10, 1),
             'verbosity': [1],
-            #'max_delta_step': np.arange(1, 10, 1),
-            'max_depth': np.arange(4, 12),
-            #'eta': np.arange(0.025, 0.5, 0.025),
-            'gamma': np.arange(1e-3, 1e2),
-            #'grow_policy': ['depthwise', 'lossguide'],
-            #'min_child_weight': np.arange(1, 10, 1),
-            'subsample': np.arange(0.5, 1, 0.1),
+            'max_delta_step': np.arange(1, 10, 1),
+            'max_depth': np.arange(1, 14),
+            'eta': np.arange(0.025, 0.5, 0.025),
+            'gamma': np.arange(0.5, 1.0, 0.05),
+            'grow_policy': ['depthwise', 'lossguide'],
+            'min_child_weight': np.arange(1, 10, 1),
+            'subsample': np.arange(0.5, 1, 0.05),
             'sampling_method': ['uniform'],
-            'colsample_bytree': np.arange(0.5, 1, 0.1),
-            'colsample_bylevel': np.arange(0.5, 1, 0.1),
-            'colsample_bynode': np.arange(0.5, 1, 0.1),
-            'nthread': [8],
+            'colsample_bytree': np.arange(0.1, 1, 0.05),
+            'colsample_bylevel': np.arange(0.1, 1, 0.05),
+            'colsample_bynode': np.arange(0.1, 1, 0.05),
             'tree_method': tree_method_list,
             'scale_pos_weight': [self.ratio],
             'predictor': ['cpu_predictor']
@@ -538,32 +519,27 @@ class XGBoostModel():
         print(space)
 
         results = self.cross_validation(space)
+
         self.trials = self.trials.append(results, ignore_index=True)
 
-        current_time = (timer()-self.time)/3600
-        print('\n')
-        print('Time elapsed so far: '+ str(current_time) + ' hours')
-        print('\n')
-
-      self.time = timer()
       for i in range(self.max_evals):
         param = {}
         param_sample = {key: random.sample(list(value), 1)[0]
                         for key, value in space.items()}
-      #   if param_sample['grow_policy'] == 'lossguide':
-      #     param.update({'max_leaves': np.arange(0, 10, 1)})
+        if param_sample['grow_policy'] == 'lossguide':
+          param.update({'max_leaves': np.arange(0, 10, 1)})
 
-      #   if param_sample['booster'] == 'dart':
-      #     param.update({'sample_type': ['uniform', 'weighted']})
-      #     param.update({'normalize_type': ['tree', 'forest']})
-      #     param.update({'rate_drop': np.linspace(0, 1)})
-      #     param.update({'skip_drop': np.linspace(0, 1)})
+        if param_sample['booster'] == 'dart':
+          param.update({'sample_type': ['uniform', 'weighted']})
+          param.update({'normalize_type': ['tree', 'forest']})
+          param.update({'rate_drop': np.linspace(0, 1)})
+          param.update({'skip_drop': np.linspace(0, 1)})
 
-      #   if param_sample['tree_method'] == 'hist':
-      #     param.update({'max_bin': [2**7, 2**8, 2**9, 2**10]})
+        if param_sample['tree_method'] == 'hist':
+          param.update({'max_bin': [2**7, 2**8, 2**9, 2**10]})
 
-      #   if param_sample['tree_method'] == 'approx':
-      #     param.update({'sketch_eps': np.arange(0.01, 0.99, 0.01)})
+        if param_sample['tree_method'] == 'approx':
+          param.update({'sketch_eps': np.arange(0.01, 0.99, 0.01)})
 
         if param_sample['tree_method'] == 'gpu_hist':
           param.update({'max_bin': [2**7, 2**8, 2**9, 2**10]})
@@ -578,7 +554,6 @@ class XGBoostModel():
         param_sample.update(param_sam)
 
         random_objective(param_sample)
-      self.opt_time = (timer() - self.time)/3600
 
       if not os.path.exists('XGBoost_trials'):
         os.makedirs('XGBoost_trials')
