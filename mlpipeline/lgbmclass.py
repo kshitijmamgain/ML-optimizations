@@ -42,13 +42,16 @@ def f1_eval(pred, data):
 
 # random search
 PARAM_GRID = {
-    'num_leaves': list(range(16, 196, 4)),
-    'max_bin': [255],
-    'lambda_l1': list(np.linspace(0, 1)),
-    'lambda_l2': list(np.linspace(0, 1)),
+    'num_leaves' : list(range(31, 1023, 16)),
+    'lambda_l1' : list(np.linspace(0, 0.5)),
+    'lambda_l2' : list(np.linspace(0, 0.5)),
+    'min_gain_to_split' : list(np.linspace(0, 5)),
+    'boosting_type' : ['gbdt', 'goss'],
     'min_data_in_leaf' : list(range(20, 500, 10)),
-    'feature_fraction': list(np.linspace(0.4, 1.0)),
-    'verbosity' : [0],
+    'min_child_weight' : list(np.linspace(0.1,10)),
+    'learning_rate' : [0.3],
+    'feature_fraction' : list(np.linspace(0.4, 1.0)),
+    'verbosity' : [-1],
     'objective' : [OBJECTIVE_LOSS]
     }
 
@@ -194,17 +197,21 @@ class Lgbmclass():
             trials = Trials()
         self.iteration = 0
         # create checkpoints
-
-        try:
-            trials = pickle.load(open("lgb_hyperopt.p","rb"))
-            print('loading from saved pickle file... starting from {}'.format(len(trials.trials)))
-        except:
-            trials = Trials()
-            print('creating new trials')
-        num_trials = len(trials.trials)
-        result = fmin(fn=self.hyperopt_obj, space=params, algo=algo, max_evals=(MAX_EVALS-num_trials),
-                      trials=trials, rstate=np.random.RandomState(SEED))
-        pickle.dump(trials, open("lgb_hyperopt.p","wb"))
+        step = 10 # save trial for after every 20 trials
+        for i in range(1, MAX_EVALS + 1, STEP):
+            # fmin runs until the trials object has max_evals elements in it, so it can do evaluations in chunks like this
+            # each step 'best' will be the best trial so far
+            # each step 'trials' will be updated to contain every result
+            # you can save it to reload later in case of a crash, or you decide to kill the script
+            try:
+                trials = pickle.load(open("lgb_hyperopt.p","rb"))
+                print('loading from saved pickle file... starting from {}'.format(len(trials.trials)))
+            except:
+                trials = Trials()
+                print('creating new trials')
+            result = fmin(fn=self.hyperopt_obj, space=params, algo=algo, max_evals=i,
+                          trials=trials, rstate=np.random.RandomState(SEED))
+            pickle.dump(trials, open("lgb_hyperopt.p","wb"))
         self.params = trials.best_trial['result']['params']
         #self.params['n_estimators'] = self.estimator
         return result, trials
@@ -251,7 +258,7 @@ class Lgbmclass():
         fn_name = 'optuna_obj'
         fn = getattr(self, fn_name)
         self.iteration = 0
-        study = optuna.create_study(study_name = 'lgb', direction='minimize', storage='sqlite:///lgb_optuna.db',
+        study = optuna.create_study(study_name = 'lgb', direction='minimize', storage='sqlite:///lgb.db',
                                     load_if_exists=True, sampler=optuna.samplers.TPESampler(seed=SEED))
         num_trials = len(study.trials)
         if num_trials < MAX_EVALS:
@@ -299,22 +306,31 @@ class Lgbmclass():
         print('Running {} rounds of LGBM parameter optimisation using Random Search:'.format(MAX_EVALS))
         # Dataframe to hold cv results
         space = PARAM_GRID
-        random_results = pd.DataFrame(columns=['loss', 'params', 'iteration', 'estimators',
-                                               'time'], index=list(range(MAX_EVALS)))
-
+        self.iteration = 0
+        
+        try:
+            print('loading previous saved trials')
+            random_results =  pd.read_csv(self.out_file).drop('optim_type', axis=1)
+            random_results['params'] = random_results.params.apply(lambda x: ast.literal_eval(x))
+        except:
+            print('creating new trials')
+            random_results = pd.DataFrame(columns=['loss', 'params', 'iteration', 'estimators',
+                                                   'time'], index=list(range(MAX_EVALS)))
+        num_trials = len(random_results)
         # Iterate through the specified number of evaluations
-        for i in range(MAX_EVALS):
+        
+        for i in range(num_trials, MAX_EVALS):
 
             # Randomly sample parameters for gbm
             params = {key: random.sample(value, 1)[0] for key, value in space.items()}
             results_list = self.randomsrch_obj(params, i)
-
             # Add results to next row in dataframe
             random_results.loc[i, :] = results_list
+        
         #sort values by the loss
         random_results.sort_values('loss', ascending = True, inplace = True)
-        self.params = random_results.loc[0, 'params']
-        self.params['n_estimators'] = self.estimator
+        self.params = random_results.loc[0, 'params']    
+        self.params['n_estimators'] = random_results.loc[0,'estimators']
         return random_results
 
     def randomsrch_obj(self, params, iteration):
@@ -335,7 +351,7 @@ class Lgbmclass():
 
         # Perform n_folds cross validation
         loss, params, n_estimators, run_time = self.lgb_crossval(params, optim_type)
-
+        
         # Return list of results
         return [loss, params, iteration, n_estimators, run_time]
 
@@ -370,4 +386,5 @@ class Lgbmclass():
         print('Plotting feature importances...')
         ax = lgb.plot_importance(self.gbm, max_num_features=10)
         plt.savefig(os.path.join('results','lgb_'+optim_type+'feature_importance.png'))
+        pickle.dump(self.test_prediction, open("lgb_predict_proba.p","wb"))
         return self.gbm
