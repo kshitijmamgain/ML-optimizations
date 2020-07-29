@@ -386,4 +386,5 @@ class Lgbmclass():
         print('Plotting feature importances...')
         ax = lgb.plot_importance(self.gbm, max_num_features=10)
         plt.savefig(os.path.join('results','lgb_'+optim_type+'feature_importance.png'))
+        pickle.dump(self.test_prediction, open("lgb_predict_proba.p","wb"))
         return self.gbm
