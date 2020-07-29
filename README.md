@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # ML-optimizations
 Optimizing ML Projects
 # Project Introduction:
@@ -42,3 +43,7 @@ This is a group project and following are the list of contibutors:
 
 Supervisor: [Tanaby Zibamanzar Mofrad](https://github.com/tanabymofrad)
 
+=======
+# Fraud-Detection
+Credit Card Fraud Detection
+>>>>>>> origin

@@ -1,10 +1,10 @@
 constant:
-    'max_evals': 101
+    'max_evals': 5
     'n_folds': 5
     'num_boost_rounds': 10000
     'early_stopping_rounds': 100
-    'seed': 47
-    'checkpoint': 10
+    'seed': 992
+    'checkpoint': 6
 
 hyperparameter:
     'loss': 'binary'
