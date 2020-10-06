@@ -3,7 +3,8 @@
 Optimizing ML Projects
 # Project Introduction:
 
-The project aims to create and compare optimized ML models using Catboost, LightGBM and XGBoost on multiple data sources for binary classification problem
+The project aims to create and compare optimized ML models using Catboost, LightGBM and XGBoost on multiple data sources for binary classification problem. You can check the project presentation [here](https://github.com/kshitijmamgain/ML-optimizations/blob/master/Comparison_final.pdf).  
+A draft white paper of the experiment is also [available](https://github.com/kshitijmamgain/ML-optimizations/blob/master/experiment_short.pdf) for reference.
 
 # Project Outline:
 
